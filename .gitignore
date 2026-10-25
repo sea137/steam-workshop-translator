@@ -1,0 +1,8 @@
+node_modules/
+.millennium/
+out/
+dist
+*.star
+*.zip
+__pycache__/
+*.pyc
