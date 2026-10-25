@@ -20,6 +20,62 @@ const click = (w: Window, label: string) => {
 };
 const good = async (s: string) => JSON.stringify({ ok: true, text: `中文 ${s}` });
 
+test('native RPC timeout is explained in Chinese without exposing framework English', async () => {
+  const w = page();
+  const stop = mountTranslator(w.document as any, async () => { throw new Error('Millennium Error: RPC timeout for child: local.workshop.translator'); }, async () => true);
+  click(w, '翻译本页'); await tick();
+  const text = w.document.querySelector('[role=status]')!.textContent!;
+  expect(text).toContain('超时'); expect(text).not.toContain('Millennium Error'); expect(text).not.toContain('local.workshop.translator');
+  stop();
+});
+
+test('source recommendations put the local model first and explain every option', () => {
+  const w = page(); const stop = mountTranslator(w.document as any, good, async () => true);
+  const options = [...w.document.querySelectorAll('select option')];
+  expect(options[0].getAttribute('value')).toBe('offline');
+  expect(options[0].textContent).toContain('首选推荐');
+  expect(options.every(o => /首选推荐|推荐|备用|应急/.test(o.textContent!))).toBe(true);
+  stop();
+});
+
+test('provider selection cancels old work, clears prior results and persists source', async () => {
+  const w = page(); const providers: string[] = [];
+  const stop = mountTranslator(w.document as any, good, async () => true,
+    async (texts, provider) => { providers.push(provider!); return { ok: true, items: texts.map(() => ({ ok: true, text: '备用结果', provider: provider === 'auto' ? 'mymemory' : provider })) }; });
+  click(w, '翻译本页'); await tick();
+  expect(providers).toEqual(['auto']);
+  expect(w.document.querySelector('.swt-translation')!.getAttribute('data-swt-label')).toContain('MyMemory');
+  click(w, '还原'); click(w, '翻译本页'); await tick();
+  expect(w.document.querySelector('.swt-translation')!.getAttribute('data-swt-label')).toContain('MyMemory');
+  const select = w.document.querySelector('select')!;
+  select.value = 'offline'; select.dispatchEvent(new w.Event('change'));
+  expect(w.document.querySelector('.swt-translation')).toBeNull();
+  click(w, '翻译本页'); await tick();
+  expect(providers).toEqual(['auto', 'offline']);
+  expect(JSON.parse(w.localStorage.getItem('swt.preferences.v1')!).provider).toBe('offline');
+  expect(w.document.querySelector('.swt-translation')!.getAttribute('data-swt-label')).toContain('本地模型'); stop();
+});
+
+test('batch partial failures preserve successful results and label glossary matches honestly', async () => {
+  const w = page('<div class="workshopItemTitle">Field Tents</div><div class="workshopItemTitle">Unknown words here</div>');
+  const stop = mountTranslator(w.document as any, good, async () => true, async () => ({ ok: true, items: [
+    { ok: true, text: '野外帐篷', provider: 'dictionary', kind: 'dictionary' }, { ok: false, error: '本地词库未命中' },
+  ] }));
+  click(w, '翻译本页'); await tick();
+  expect(w.document.querySelectorAll('.swt-translation')).toHaveLength(1);
+  expect(w.document.querySelector('.swt-translation')!.getAttribute('data-swt-label')).toContain('词库匹配');
+  expect(w.document.querySelector('[role=status]')!.textContent).toBe('本地词库未命中'); stop();
+});
+
+test('switching source during an in-flight response cannot render the previous source result', async () => {
+  const w = page(); let resolve!: (x: unknown) => void;
+  const stop = mountTranslator(w.document as any, good, async () => true, () => new Promise(r => resolve = r));
+  click(w, '翻译本页');
+  const select = w.document.querySelector('select')!; select.value = 'dictionary'; select.dispatchEvent(new w.Event('change'));
+  resolve({ ok: true, items: [{ ok: true, text: '旧结果', provider: 'google' }] }); await tick();
+  expect(w.document.querySelector('.swt-translation')).toBeNull(); stop();
+});
+
 test('24 workshop titles use three batch RPCs and render all translations', async () => {
   const w = page(Array.from({ length: 24 }, (_, i) => `<div class="workshopItemTitle">Workshop title ${i}</div>`).join(''));
   let singleCalls = 0, batchCalls = 0;

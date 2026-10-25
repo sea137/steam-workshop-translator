@@ -1,62 +1,42 @@
-# 海京Tools 安装教程
+# 玩家安装教程
 
-适用：Windows 桌面 Steam。当前功能：海京翻译工具。
+推荐从 [Releases](https://github.com/sea137/steam-workshop-translator/releases/latest) 下载 **HaijingTools-v0.3.1-Windows-WithModel.zip**。这是含离线模型的完整包，普通玩家不要选 Source code。
 
 ## 第一次安装
 
-1. 打开 [Releases 下载页](https://github.com/sea137/steam-workshop-translator/releases/latest)。
-2. 在 **Assets** 下载 **HaijingTools-v0.2.0-Windows.zip**。`Source code (zip)` 是源码，不是普通用户安装包。
-3. 右键 ZIP → **全部解压**，不要在压缩包里直接运行。
-4. Steam 左上角菜单 → **退出**，不要只关闭窗口。
-5. 双击解压目录里的 **Install.cmd**。
-6. 启动 Steam → **Steam → Millennium → Plugins** → 启用 **海京Tools**。
-7. 打开工坊，右下角应显示 **海京翻译工具 · 0.2.0**，点击 **翻译本页**。
+1. 右键下载的 ZIP → **全部解压**。
+2. 从 Steam 菜单选择 **退出**，双击 **Install.cmd**。
+3. 双击 **安装离线翻译.cmd**，等待自动配置完成。完整包的模型会自动读取，不必另下模型或词库；首次要联网下载私有 Python / 推理引擎。若缺少 Millennium，第二步会下载安装官方 3.6.2 框架并校验 SHA256。
+4. 启动 Steam → **Steam → Millennium → Plugins** → 启用 **海京Tools**。
+5. 打开工坊，看到 **海京翻译工具 · 0.3.1** 后，在翻译源选择 **本地模型（首选推荐）**，点击 **翻译本页**。评论需要勾选“包括评论”。
 
-缺少框架时，安装脚本会下载官方 Millennium **3.6.2** 发行文件并核对 SHA256。已有框架保留。下载框架需要访问 GitHub，翻译需要访问 Google。
+下次电脑重启后，双击 **启动离线翻译.cmd**。不使用时运行 **停止离线翻译.cmd**。模型只处理英中；其他语言可用 Google 备用源。机器翻译不能保证专有名词准确。
 
-## 已有 Millennium，手动安装
+## 下载项有什么区别？
 
-退出 Steam，将 ZIP 内 `workshop-translator.star` 复制为：
-
-```text
-<Steam安装目录>\millennium\plugins\local.workshop.translator.star
-```
-
-重新启动 Steam，在 Millennium 的 Plugins 列表启用海京Tools。
-
-也可先用 [Millennium 官方安装器](https://docs.steambrew.app/users/getting-started/installation) 安装框架。海京Tools 未上架插件商店，不能按商店 ID 搜索安装。
-
-## 控件
-
-| 控件 | 作用 |
+| 文件 | 用途 |
 | --- | --- |
-| 翻译本页 | 分批翻译，已完成的内容逐批显示 |
-| 自动 | 翻译后续页面及新加载内容，默认关闭 |
-| 包括评论 | 翻译可识别的评论，默认关闭 |
-| 还原 | 移除译文、停止任务，并关闭自动翻译 |
-| 清缓存 | 清空缓存及译文，下次重新获取 |
-| − / ＋ | 收起、展开面板 |
+| Windows-WithModel.zip | 推荐完整包，带模型与词库 |
+| Windows.zip | 轻量包，不含模型；离线安装脚本会另行下载 |
+| translate-en_zh-1_9.argosmodel | 单独模型补下载，不是可执行程序 |
+| dictionary-starter.json | 默认已内置的 57 条起步词库，可自行编辑 |
+| workshop-translator.star | 已装 Millennium 的高级用户手动覆盖插件 |
+| Source code | 开发者源码 |
 
-每轮最多处理 160 处文字，可再次点击继续。相同原文优先使用本地缓存。
-
-## 更新和卸载
-
-更新：下载新版、完整解压、退出 Steam、运行 Install.cmd，再重新打开 Steam 并刷新工坊。面板标题应显示新版版本号。
-
-卸载：退出 Steam，运行 **Uninstall.cmd**，删除插件及缓存，保留框架和其他插件；也可先在 Plugins 中禁用海京Tools。
+仅在线翻译可省略离线安装步骤。单独下载模型后，可以用 `offline/Install-Offline.ps1 -ModelPath 模型完整路径` 指定；完整包无需此操作。
 
 ## 常见问题
 
-**没有面板？** 确认使用的是 Steam 客户端，插件已启用，页面是工坊或工坊详情；重启 Steam，再刷新工坊。
+**是不是还要下载“题库”？** 不用。这里的模型负责整句翻译，词库只匹配已有词条。推荐完整包已经同时提供。自定义词库可在面板展开“离线模型 / 导入词库”，选择 JSON 文件导入，参考 dictionary-example.json。
 
-**连接失败 / 很慢？** 当前依赖 Google 公共翻译接口。检查网络是否能访问 Google；接口可能限流。0.2.0 减少请求次数，但不能解决网络不可达。
+**为什么仍要首次联网？** 完整包内含模型，框架和私有运行环境仍需按需下载安装。不用自己安装 Python；第一次装好后，本地模型推理不联网。
 
-**图片或 Mod 内部还是外文？** 暂不支持图片文字识别，也不会汉化 Mod 内部文件。
+**错误写着超时？** 新版会显示中文。优先选择本地模型；确认本地服务已启动。若插件后端持续不响应，退出并重新打开 Steam。不要连续重试或清缓存。
 
-**Steam 仍在运行？** 从 Steam 菜单退出并等客户端完全结束。脚本不会强制结束 Steam 或游戏。
+**找不到 Steam？** 安装器读取当前用户 Steam 注册表路径，并检查 steam.exe；可手动执行 `Install.ps1 -SteamPath 'D:\Steam' -InstallFramework`。不要填游戏库目录。
 
-**拒绝访问？** 需要 Steam 目录写入权限。目录受保护时，可在确认脚本来源后以管理员身份运行 Install.cmd；不要关闭安全软件或改动系统安全设置来安装。
+**没有 Millennium 菜单？** 从 Steam 菜单真正退出再启动；确认框架已安装。详细步骤、模型下载校验和第三方许可见 [离线说明](PROVIDERS.md)。
 
-**已有 wsock32.dll 冲突？** 脚本会停止，避免覆盖其他工具。请核对原文件来源，或用 Millennium 官方安装器处理框架安装。
+## 更新与卸载
 
-**自动找不到 Steam？** 按手动安装步骤复制文件，或对 Install.ps1 传入 `-SteamPath '实际Steam目录'`。所选目录内应能找到 steam.exe。
+退出 Steam，再运行新包的 Install.cmd 覆盖更新，已有模型和自定义词库保留。卸载运行 Uninstall.cmd，只删除本插件与译文缓存；框架、模型和词库保留。要删除模型，先运行停止脚本，再在资源管理器删除 `%LOCALAPPDATA%\HaijingTools\offline`。

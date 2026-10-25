@@ -8,6 +8,8 @@ export default definePlugin(() => ({
     <Field label="使用方法" description="打开任意游戏的创意工坊，在右下角点击「翻译本页」。" />
     <Field label="中英对照" description="译文显示在原文下方。图片、作者名称、订阅按钮和链接保持原样。" />
     <Field label="自动翻译" description="在工坊右下角开启「自动」，后续访问和新加载的内容会自动翻译。评论需要另外勾选。" />
-    <Field label="在线翻译与缓存" description="选中的工坊文字会发送到 Google 翻译公共接口，无需 API Key。译文缓存在本机，可在工坊面板清空。接口可能限流，网络需能访问 Google。" />
+    <Field label="翻译源推荐" description="首选推荐本地模型（英语到简中），自动切换也优先本地；Google 适合多语种备用，MyMemory 是限额备用源，本地词库用于词条应急匹配。结果标明来源。" />
+    <Field label="离线使用" description="安装包附带「安装离线翻译.cmd」，自动安装私有运行环境和约 67 MB 的英中模型；以后运行「启动离线翻译.cmd」。词库也可导入 JSON，词库只匹配完整词条。" />
+    <Field label="联网与缓存" description="在线模式将所选工坊文字发送给对应服务，自动模式可能发送给 Google 和 MyMemory。本地模型和词库模式不调用在线服务。译文按来源分开缓存在本机。" />
   </>,
 }));

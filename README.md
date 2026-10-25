@@ -1,70 +1,78 @@
-# 海京Tools
+# 海京Tools · 海京翻译工具
 
-在 Steam 客户端里直接阅读创意工坊中文译文。
+在 **Windows Steam 客户端**内翻译创意工坊标题、介绍和可选评论，保留原文并标明译文来源。当前版本 **0.3.1**。
 
-**海京Tools** 是插件名称，目前的功能叫 **海京翻译工具**，后续会继续扩展其他功能。当前版本 **0.2.0**，适用于 **Windows 桌面 Steam**，依赖第三方插件框架 **Millennium**。
+**[下载最新版](https://github.com/sea137/steam-workshop-translator/releases/latest)** · [详细安装步骤](docs/INSTALL.md) · [离线模型与翻译源](docs/PROVIDERS.md) · [反馈问题](https://github.com/sea137/steam-workshop-translator/issues)
 
-**[下载安装包](https://github.com/sea137/steam-workshop-translator/releases/latest)** · [详细安装教程](docs/INSTALL.md) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/sea137/steam-workshop-translator/issues)
+## 普通玩家下载哪个？
 
-## 安装
+推荐下载 **`HaijingTools-v0.3.1-Windows-WithModel.zip`（含模型完整包）**。
 
-1. 打开下载页，在 **Assets** 下载 `HaijingTools-v0.2.0-Windows.zip`。普通用户不需要下载 `Source code`，也不需要编译。
-2. 完整解压 ZIP，从 Steam 菜单选择 **退出**。
-3. 双击 **Install.cmd**。脚本自动查找 Steam，缺少框架时从官方 GitHub 下载 Millennium 3.6.2，校验文件后安装。
-4. 启动 Steam → 左上角 **Steam → Millennium → Plugins** → 启用 **海京Tools**。
-5. 进入创意工坊，在右下角 **海京翻译工具** 面板点击 **翻译本页**。
+- 包含插件、安装脚本、**英中离线模型**、内置词库及词库 JSON。模型约 67.5 MiB。
+- **不用单独下载“题库”或模型，不需要自行安装 Python。** 首次安装仍需联网下载 Millennium 框架（缺少时）和私有运行环境。
+- `HaijingTools-v0.3.1-Windows.zip` 是不带模型的轻量包，可在线翻译，也能通过离线安装脚本另行下载模型。
+- `Source code (zip)` 是开发源码，不是玩家安装包。
 
-旧版用户也运行同一个安装程序，再重新打开 Steam 并刷新工坊。插件标识和缓存路径保持兼容，不会另装一个重复插件。
+## 安装，照这几步操作
 
-## 功能
+1. 下载 **WithModel.zip**，右键选择 **全部解压**。
+2. 从 Steam 左上角菜单选择 **退出**，双击解压目录的 **Install.cmd**。脚本自动识别 Steam 目录；缺少 Millennium 时会从官方下载并校验后安装。
+3. 双击 **安装离线翻译.cmd**，等到提示安装完成。它自动使用完整包里的模型，配置私有运行环境，并启动本地服务。
+4. 启动 Steam，在 **Steam → Millennium → Plugins** 中启用 **海京Tools**。
+5. 打开工坊，在右下角 **海京翻译工具 · 0.3.1** 选择 **本地模型（首选推荐）**，点击 **翻译本页**。
 
-- 翻译工坊列表标题、条目介绍及可识别的公告摘要；评论可选，默认关闭。
-- 原文保留，中文显示在下方，方便核对机器翻译。
-- **自动**：翻译后续页面和动态加载内容，默认关闭。
-- **还原**：移除译文、停止当前任务，并关闭自动翻译。
-- **清缓存**：清空本机译文缓存、移除译文，并关闭自动翻译。
-- **− / ＋**：收起、展开面板。
+以后重启电脑，先运行 **启动离线翻译.cmd** 再使用本地模型；**停止离线翻译.cmd** 可释放模型占用。离线服务不会自动随 Windows 开机启动。
 
-这是工坊网页文字翻译工具。暂不识别图片文字，不会汉化 Mod 内部文件。专有名词可能误译，请对照原文。
+升级用户也运行 Install.cmd 覆盖安装。插件标识、已有缓存和自定义词库保持兼容。当前依赖第三方 Millennium 框架，已验证 3.6.2；它不是 Steam 官方内置功能。
 
-## 速度
+## 翻译源怎么选？
 
-0.2.0 每批合并最多 8 段，批内去重，优先处理可见内容，分批显示。缓存每批写入一次，页面扫描减少重复遍历。批量结果严格核对编号；编号异常时退回逐条处理，避免译文配错。
+| 翻译源 | 推荐用途 |
+| --- | --- |
+| **本地模型 · 首选推荐** | 英语到简中，安装后推理不联网，无在线额度限制；模组术语仍可能误译 |
+| 自动切换 · 推荐 | **本地模型 → Google → MyMemory → 词库**；在线阶段可能发送所选文字 |
+| Google · 备用 | 多语种、自动识别原文语言；公共网页接口可能不可用或限流 |
+| MyMemory · 备用 | 英语到简中，免费匿名额度约 5000 字符/天 |
+| 本地词库 · 应急 | 完整词条匹配；未命中的整句不会拼凑单词冒充译文 |
 
-独立 Lua 后端的单次真联网测试中，同样 8 条短文本，0.1.2 为 **8 次请求 / 7.263 秒**，0.2.0 为 **1 次请求 / 0.717 秒**。这是一个网络样本，**不代表固定提速倍数，也不测量 Steam 的界面帧率**。见[测试记录](docs/PERFORMANCE.md)。
+面板中的“自动”复选框控制后续页面/动态内容是否自动翻译，和翻译源里的“自动切换”是两个设置。评论需要单独勾选。“还原”移除译文并停止自动翻译，“清缓存”不删除模型或自定义词库。
 
-## 联网与数据
+工具只翻译工坊**网页文字**，不识别图片文字，不修改 Mod 内部文件或订阅。
 
-当前使用 Google 翻译公共网页接口，无需 API Key，**需要网络能访问 `translate.googleapis.com`**。接口可能限流或变化，不能保证长期可用。
+## 模型和词库在哪里？
 
-点击翻译，或手动开启自动翻译后，所选工坊文字会发送给 Google。只有勾选“包括评论”后才处理评论。插件代码不读取 Steam 密码、Cookie、私信或游戏文件，不修改订阅。
+完整包已经带齐。Release 还单独提供：
 
-译文缓存在 `<Steam目录>/millennium/config/workshop-translator-cache.json`；开关偏好保存在 Steam 社区网页的本地存储中。
+- `translate-en_zh-1_9.argosmodel`：原始离线英中模型，用于需要单独补下载的玩家。
+- `dictionary-starter.json`：57 条起步词库，默认已内置，不需要再次导入。
+- `dictionary-example.json`：自定义词库格式示例；导入支持最多 2 MB / 10000 条。
 
-本项目与 Valve 无隶属关系，是本地安装的第三方插件，未经过 Steam Homebrew 插件商店审核，没有商店签名。安装脚本源码、框架下载地址和 SHA256 校验值可查看。
+离线模型装在 `%LOCALAPPDATA%\HaijingTools\offline`。自定义词库保存在 `<Steam>\millennium\config\haijing-dictionary.json`，译文缓存在同目录的 `workshop-translator-cache.json`。只保存本机文件。
 
-## 卸载
+## 隐私与错误提示
 
-退出 Steam，双击 **Uninstall.cmd**，删除海京Tools 和译文缓存，保留 Millennium 及其他插件。也可先在 Millennium 中禁用海京Tools。框架自身的卸载方式见 [Millennium 官方文档](https://docs.steambrew.app/)。
+本地模型和词库模式不调用在线翻译服务。Google/MyMemory 模式会向对应服务发送选中的工坊文字；自动切换可能尝试多个服务。代码不读取 Steam 密码、Cookie、私信或游戏文件。
 
-## 开发
+0.3.1 对每次请求设置总耗时预算，避免多段串行翻译拖过框架的 RPC 等待时限。已完成的结果会保留，RPC 超时和网络错误用中文解释。网络或电脑负载仍可能导致失败，不保证任何在线接口长期可用。
 
-使用 Bun **1.4.4** 和 Starlight **1.1.6**：
+本项目为本地安装的第三方插件，与 Valve 无隶属关系，未上架插件商店。退出 Steam 后运行 Uninstall.cmd 可卸载插件及译文缓存，保留框架、模型和自定义词库。
+
+## 开发与验证
+
+使用 Bun 1.4.4、Starlight 1.1.6：
 
 ```text
 bun install --frozen-lockfile
 bun run typecheck
 bun test
 bun run build
-pwsh -File scripts/Pack-Release.ps1
+python -m pip install lupa==2.8
+python tests/release_backend_test.py workshop-translator.star
+python tests/offline_test.py
+python scripts/Fetch-Model.py out/translate-en_zh-1_9.argosmodel
+pwsh -File scripts/Pack-Release.ps1 -ModelPath out/translate-en_zh-1_9.argosmodel
 ```
 
-源码在 `frontend/`、`webview/`、`backend/`；发布文件生成到 `out/`。可选 Lua 后端检查：安装 Python 的 `lupa`，运行 `python tests/backend_test.py`。
+实际 `.star` 包在 Lua 和 LuaJIT 中验证来源切换、缓存、词库、限流及慢请求预算；页面有交互回归。真实离线模型已验证断网整句/段落/长文本推理。测试环境和客户端页面验收是不同证据，用户实际使用效果以 Steam 为准。
 
-已检查类型、14 项 DOM/交互测试、Lua 批量/缓存/异常处理，以及 Chromium 布局和对象返回值回归。用户已确认 0.1.2 在 Steam 中成功显示评论译文；0.2.0 性能数字来自独立 Lua 真联网测试，实际操作感受以客户端为准。
-
-由海京维护，开发过程中使用了 Codex 辅助生成和调试代码。采用 [MIT 许可](LICENSE)。Millennium、Starlight、Google 翻译分别属于各自的项目及服务。
-
-## 反馈
-
-请在 [Issues](https://github.com/sea137/steam-workshop-translator/issues) 提供插件、Steam 和框架版本、公开工坊链接、错误提示及复现步骤。不要提交密码、Cookie、私信或含个人信息的完整日志。
+海京维护，开发中使用 Codex 辅助。插件源码与起步词库采用 [MIT](LICENSE)；模型为 Argos 打包的 OPUS-MT en→zh 1.9，原始模型 CC BY 4.0，作者 Jörg Tiedemann、Santhosh Thottingal。CTranslate2、SentencePiece、uv 等许可与署名见 [第三方说明](docs/PROVIDERS.md)。

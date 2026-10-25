@@ -7,6 +7,11 @@ on:
       - 'package.json'
       - '.github/workflows/release.yml'
       - 'tests/**'
+      - 'backend/**'
+      - 'webview/**'
+      - 'frontend/**'
+      - 'offline/**'
+      - 'scripts/**'
 permissions:
   contents: read
 concurrency:
@@ -26,9 +31,16 @@ jobs:
       - run: bun run typecheck
       - run: bun test
       - run: bun run build
+      - name: Check the packed Lua backend (including UTF-8 and rate limiting)
+        run: |
+          python -m pip install lupa==2.8
+          python tests/release_backend_test.py workshop-translator.star
+          python tests/offline_test.py
       - name: Package release
         shell: pwsh
-        run: ./scripts/Pack-Release.ps1
+        run: |
+          python scripts/Fetch-Model.py out/translate-en_zh-1_9.argosmodel
+          ./scripts/Pack-Release.ps1 -ModelPath out/translate-en_zh-1_9.argosmodel
       - name: Publish version if absent
         shell: pwsh
         env:
@@ -40,5 +52,5 @@ jobs:
           $tag = 'v' + $version
           gh release view $tag --json tagName 2>$null | Out-Null
           if ($LASTEXITCODE -eq 0) { Write-Host "Release $tag already exists; leaving it unchanged."; exit 0 }
-          gh release create $tag "out/HaijingTools-v$version-Windows.zip" out/workshop-translator.star out/SHA256SUMS.txt --target $env:RELEASE_TARGET --title "海京Tools $version · 海京翻译工具" --notes-file docs/RELEASE_NOTES.md
+          gh release create $tag "out/HaijingTools-v$version-Windows.zip" "out/HaijingTools-v$version-Windows-WithModel.zip" out/translate-en_zh-1_9.argosmodel out/dictionary-starter.json out/workshop-translator.star out/SHA256SUMS.txt --target $env:RELEASE_TARGET --title "海京Tools $version · 本地翻译优先与中文错误提示" --notes-file docs/RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

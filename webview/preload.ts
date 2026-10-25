@@ -12,7 +12,8 @@ export default async function main() {
     cleanup?.(); cleanup = undefined;
     if (isWorkshopURL(location.href)) cleanup = mountTranslator(document,
       text => backend.translateText(text), () => backend.clearTranslationCache(),
-      texts => backend.translateTexts(JSON.stringify(texts)));
+      (texts, provider) => backend.translateTexts(JSON.stringify({ texts, provider: provider || 'auto' })),
+      { importDictionary: payload => backend.importDictionary(payload) });
   };
   sync();
   // Covers React navigation without replacing Steam's history functions.

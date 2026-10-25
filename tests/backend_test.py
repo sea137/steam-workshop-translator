@@ -2,14 +2,20 @@
 Run from the source folder: python tests/backend_test.py
 """
 import json
+import os
 import tempfile
 import urllib.parse
 from pathlib import Path
-from lupa import LuaRuntime, lua_type
+if os.environ.get('HAIJING_LUAJIT'):
+    from lupa.luajit21 import LuaRuntime, lua_type
+else:
+    from lupa import LuaRuntime, lua_type
 
-source = (Path(__file__).resolve().parent.parent / 'backend/translator.lua').read_text(encoding='utf-8')
+source = Path(os.environ.get('HAIJING_BACKEND_SOURCE', Path(__file__).resolve().parent.parent / 'backend/translator.lua')).read_text(encoding='utf-8')
 with tempfile.TemporaryDirectory(prefix='swt-test-') as temp:
     runtime = LuaRuntime(unpack_returned_tuples=True)
+    clock = [1000000]
+    runtime.globals().os.time = lambda: clock[0]
     def to_lua(value):
         if isinstance(value, dict):
             return runtime.table_from({k: to_lua(v) for k, v in value.items()})
@@ -28,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix='swt-test-') as temp:
         state['calls'] += 1
         state['url'] = url
         assert options['verify_ssl'] is True
-        assert options['timeout'] == 18
+        assert 0 < options['timeout'] <= 5
         if state.get('network_failure'):
             return None
         return to_lua({'status': state['status'], 'body': state['body']})
@@ -41,9 +47,17 @@ with tempfile.TemporaryDirectory(prefix='swt-test-') as temp:
         'fs': runtime.table_from({'create_directories': lambda p: Path(p).mkdir(parents=True, exist_ok=True)}),
         'millennium': runtime.table_from({'steam_path': lambda: Path(temp).as_posix()}),
     }
-    runtime.globals()['require'] = lambda name: modules[name]
+    def require(name):
+        if name not in modules:
+            modules[name] = runtime.execute((Path(os.environ.get('HAIJING_BACKEND_DIR', Path(__file__).resolve().parent.parent / 'backend')) / (name + '.lua')).read_text(encoding='utf-8'))
+        return modules[name]
+    runtime.globals()['require'] = require
+    old_cache = Path(temp) / 'millennium/config/workshop-translator-cache.json'
+    old_cache.parent.mkdir(parents=True, exist_ok=True)
+    old_cache.write_text(json.dumps({'Legacy title': '旧版谷歌缓存'}, ensure_ascii=False), encoding='utf-8')
     runtime.execute(source)
     translate = lambda text: json.loads(runtime.globals().translateText(text))
+    assert translate('Legacy title')['cached'] is True and state['calls'] == 0
     assert translate('Field Tents')['text'] == '野外帐篷'
     assert state['calls'] == 1
     assert translate('Field Tents')['cached'] is True
@@ -54,7 +68,15 @@ with tempfile.TemporaryDirectory(prefix='swt-test-') as temp:
     runtime.globals().clearTranslationCache()
     assert translate('Field Tents')['cached'] is False
     state['status'] = 429
-    assert translate('rate limit')['ok'] is False
+    limited = translate('rate limit')
+    assert limited['ok'] is False
+    assert '翻译' in limited['error'] and '429' in limited['error'], repr(limited)
+    before = state['calls']
+    assert translate('retry while limited')['ok'] is False
+    assert state['calls'] == before, 'Cooldown must not send another HTTP request'
+    assert translate('Field Tents')['cached'] is True
+    assert state['calls'] == before, 'Cached translations remain usable during cooldown'
+    clock[0] += 61
     state['status'] = 200
     state['body'] = 'not json'
     assert translate('invalid JSON')['ok'] is False
@@ -69,6 +91,7 @@ with tempfile.TemporaryDirectory(prefix='swt-test-') as temp:
     assert translate('汉' * 2400)['ok'] is False
     # Recreate Lua module state to prove persisted cache survives reload.
     state['network_failure'] = False
+    clock[0] += 61
     runtime.execute(source)
     assert translate('Field Tents')['cached'] is True
     # Google preserves numbered boundaries: eight items must need one HTTP call.
@@ -78,6 +101,7 @@ with tempfile.TemporaryDirectory(prefix='swt-test-') as temp:
     before = state['calls']
     batch = json.loads(runtime.globals().translateTexts(json.dumps(texts)))
     assert state['calls'] - before == 1
+    assert '⟦HJ_01⟧' in urllib.parse.parse_qs(urllib.parse.urlsplit(state['url']).query)['q'][0], 'Packed batch markers must retain their UTF-8 bytes'
     assert [item['text'] for item in batch['items']] == ['中文 ' + str(i) for i in range(8)]
     before = state['calls']
     again = json.loads(runtime.globals().translateTexts(json.dumps(texts)))
@@ -98,6 +122,9 @@ with tempfile.TemporaryDirectory(prefix='swt-test-') as temp:
     before = state['calls']; state['status'] = 429
     failure = json.loads(runtime.globals().translateTexts(json.dumps(['Limit A', 'Limit B'])))
     assert state['calls'] - before == 1 and all(not item['ok'] for item in failure['items'])
+    before = state['calls']
+    again = json.loads(runtime.globals().translateTexts(json.dumps(['Limit C', 'Limit D'])))
+    assert state['calls'] == before and all('429' in item['error'] for item in again['items'])
     state['status'] = 200
     assert not json.loads(runtime.globals().translateTexts('[]'))['ok']
     assert not json.loads(runtime.globals().translateTexts(json.dumps(['x'] * 9)))['ok']

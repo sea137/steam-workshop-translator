@@ -76,7 +76,7 @@
 
 下载放这里：https://github.com/sea137/steam-workshop-translator/releases/latest
 
-请下载 **Assets 里的 HaijingTools-v0.2.0-Windows.zip**，普通用户不用下载 Source code。解压后退出 Steam，运行 Install.cmd；重新打开 Steam，到 Millennium → Plugins 启用「海京Tools」。工坊右下角的功能面板叫「海京翻译工具」。
+请下载 **Assets 里的 HaijingTools-v0.3.1-Windows-WithModel.zip**，普通用户不用下载 Source code。解压后退出 Steam，运行 Install.cmd；重新打开 Steam，到 Millennium → Plugins 启用「海京Tools」。工坊右下角的功能面板叫「海京翻译工具」。
 
 连接失败先检查当前网络能否访问 Google。反馈请带上插件版本、公开工坊链接和错误截图，注意遮住账号信息。
 
@@ -90,3 +90,13 @@ Steam、创意工坊、游戏工具、开源、翻译工具、RimWorld、海京T
 - 可以说“减少请求次数、批量翻译”；不要把一次网络样本写成“永久十倍加速”。
 - 不把网页翻译宣传为“所有 Mod 自动汉化”。
 - 不承诺全游戏、全页面、全网络环境都适配，也不作未经验证的账号安全承诺。
+
+## 0.3.0 新版补充
+
+Google 用不了也能切换：翻译源里选「自动切换」或「MyMemory」。MyMemory 免费额度有限，当前支持英语到简中。
+
+想断网翻译整句：完整解压安装包，运行「安装离线翻译.cmd」，等模型和运行环境装好；工坊里选择「本地模型」。以后每次开机运行「启动离线翻译.cmd」即可。模型约 67 MB，运行环境另需下载。支持 JSON 词库导入，但普通词库只能匹配已有词条，不能代替整句翻译。
+
+## 0.3.1 玩家补充
+
+首选推荐本地模型，自动模式也优先本地。推荐下载 WithModel 完整包，里面已经有离线模型和词库，不用另找“题库”。完整解压后依次运行 Install.cmd、安装离线翻译.cmd；首次仍需联网下载运行环境。下次重启电脑后运行启动离线翻译.cmd。

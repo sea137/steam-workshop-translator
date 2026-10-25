@@ -1,15 +1,18 @@
-海京Tools 首个公开版本，当前功能为 **海京翻译工具**。
+海京Tools 0.3.1：本地翻译优先，错误提示中文化，修复慢请求超出框架 RPC 等待时限。
 
-- 在 Windows Steam 客户端内翻译工坊标题、介绍和可选评论。
-- 原文保留，支持自动翻译、还原及缓存。
-- 每批最多 8 段，批内去重，可见内容优先。
+**普通玩家推荐下载 `HaijingTools-v0.3.1-Windows-WithModel.zip`（含模型完整包）。**
 
-**安装：** 下载 `HaijingTools-v0.2.0-Windows.zip` → 完整解压 → 退出 Steam → 运行 `Install.cmd` → 启动 Steam，在 Millennium 的 Plugins 列表启用 **海京Tools**。
+- 翻译源带推荐说明：本地模型首选；自动切换按本地模型 → Google → MyMemory → 词库尝试。
+- 每次请求设总耗时预算，缩小本地 / MyMemory 批次，保留已完成结果；RPC 超时、网络失败、限流等显示中文。
+- 完整包已经包含约 67.5 MiB 的英中离线模型与 57 条起步词库，不用另找“题库”。
+- 同时提供轻量包、单独模型 `translate-en_zh-1_9.argosmodel` 和 `dictionary-starter.json`，方便补下载或编辑。
 
-普通用户无需下载 Source code。旧版也运行 Install.cmd 覆盖升级。
+**安装：** 全部解压 → 退出 Steam → 运行 Install.cmd → 运行“安装离线翻译.cmd” → 启动 Steam 并在 Millennium / Plugins 启用海京Tools → 工坊选择“本地模型（首选推荐）”。
 
-**依赖：** Windows 桌面 Steam、Millennium（已验证 3.6.2）、可访问 GitHub 和 Google 翻译的网络。缺少框架时，安装脚本下载官方 Millennium 3.6.2 并校验 SHA256。本插件为第三方本地插件，未上架插件商店。
+首次仍需联网下载框架（缺少时）和私有运行环境，不用自己配置 Python。下次电脑开机后运行“启动离线翻译.cmd”。模型已安装后推理不联网，英语到简中，术语可能误译。
 
-无需 API Key；暂不识别图片文字，不汉化 Mod 内部文件。机器翻译可能误译，请对照原文。
+Google 为可能变化的公共接口，MyMemory 英中匿名免费额度约 5000 字符/天。自动模式可能向在线服务发送所选文字。
 
-安装及卸载详见仓库 README 和 docs/INSTALL.md。
+模型来自官方 Argos 包，原始 OPUS-MT 模型 CC BY 4.0，作者 Jörg Tiedemann、Santhosh Thottingal；模型包 README 与第三方说明保留署名。模型 SHA256：433e7c4f034d87fbe2353161e05f18646d7999452f801a4e1f0378522b9850ab。
+
+完整步骤见仓库 README、docs/INSTALL.md 和 docs/PROVIDERS.md。
