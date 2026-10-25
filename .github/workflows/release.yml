@@ -6,6 +6,7 @@ on:
     paths:
       - 'package.json'
       - '.github/workflows/release.yml'
+      - 'tests/**'
 permissions:
   contents: read
 concurrency:

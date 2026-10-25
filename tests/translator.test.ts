@@ -9,6 +9,11 @@ const page = (html = '<div class="workshopItemTitle">Field Tents</div>') => {
   return w;
 };
 const tick = () => new Promise(resolve => setTimeout(resolve, 20));
+const waitFor = async (ready: () => boolean, timeout = 3000) => {
+  const deadline = Date.now() + timeout;
+  while (!ready() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+  expect(ready()).toBe(true);
+};
 const click = (w: Window, label: string) => {
   const b = [...w.document.querySelectorAll('button')].find(b => b.textContent === label)!;
   expect(b).toBeDefined(); b.click();
@@ -21,7 +26,7 @@ test('24 workshop titles use three batch RPCs and render all translations', asyn
   const stop = mountTranslator(w.document as any,
     async s => { singleCalls++; return good(s); }, async () => true,
     async (texts: string[]) => { batchCalls++; return { ok: true, items: texts.map(text => ({ ok: true, text: `中文 ${text}` })) }; });
-  click(w, '翻译本页'); await new Promise(resolve => setTimeout(resolve, 80));
+  click(w, '翻译本页'); await waitFor(() => w.document.querySelectorAll('.swt-translation').length === 24);
   expect(singleCalls).toBe(0); expect(batchCalls).toBe(3);
   expect(w.document.querySelectorAll('.swt-translation')).toHaveLength(24); stop();
 });
@@ -147,7 +152,7 @@ test('automatic mode picks up newly loaded items and comments stay opt-in', asyn
   inputs[0].click(); await tick();
   const next = w.document.createElement('div'); next.className = 'workshopItemTitle'; next.textContent = 'Animal Cuddling';
   w.document.body.append(next);
-  await new Promise(resolve => setTimeout(resolve, 850));
+  await waitFor(() => next.querySelector('.swt-translation') !== null);
   expect(next.querySelector('.swt-translation')).not.toBeNull();
   expect(inputs[1].checked).toBe(false); stop();
 });
