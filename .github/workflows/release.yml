@@ -1,0 +1,43 @@
+name: Build and publish HaijingTools
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - '.github/workflows/release.yml'
+permissions:
+  contents: read
+concurrency:
+  group: haijing-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+      - run: bun run build
+      - name: Package release
+        shell: pwsh
+        run: ./scripts/Pack-Release.ps1
+      - name: Publish version if absent
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TARGET: ${{ github.sha }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = 'v' + $version
+          gh release view $tag --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { Write-Host "Release $tag already exists; leaving it unchanged."; exit 0 }
+          gh release create $tag "out/HaijingTools-v$version-Windows.zip" out/workshop-translator.star out/SHA256SUMS.txt --target $env:RELEASE_TARGET --title "海京Tools $version · 海京翻译工具" --notes-file docs/RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

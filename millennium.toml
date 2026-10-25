@@ -1,0 +1,22 @@
+[plugin]
+id = "local.workshop.translator"
+name = "海京Tools"
+version = "0.2.0"
+author = "MR.Sea & Codex"
+description = "海京Tools 功能集：海京翻译工具，在 Steam 创意工坊显示简体中文译文。"
+
+[backend]
+entry = "backend/main.lua"
+sources = ["backend/**/*.lua"]
+
+[frontend]
+entry = "frontend/index.tsx"
+
+[webkit]
+entry = "webview/preload.ts"
+
+[compiler]
+output_path = "workshop-translator.star"
+
+[patches]
+debug = false

@@ -1,0 +1,18 @@
+{
+  "private": true,
+  "name": "steam-workshop-translator",
+  "version": "0.2.0",
+  "scripts": {
+    "build": "starlight pack --release",
+    "prepare": "starlight lsp",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@steambrew/starlight": "1.1.6",
+    "@types/react": "19.1.1",
+    "@types/react-dom": "19.1.1",
+    "happy-dom": "20.8.4",
+    "typescript": "5.9.3"
+  }
+}
