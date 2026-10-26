@@ -52,7 +52,7 @@ test('announcement detail selects its actual headline and body while preserving 
   click(w, '还原'); expect(w.document.querySelectorAll('.swt-translation')).toHaveLength(0); stop();
 });
 
-test('captured live Steam announcement selects the complete BBCode body', () => {
+test('Steam announcement structure fixture selects the complete BBCode body', () => {
   const html = readFileSync(new URL('./fixtures/announcement-detail.html', import.meta.url), 'utf8');
   const w = page(html); w.location.href = 'https://steamcommunity.com/ogg/294100/announcements/detail/672882362547178634';
   const targets = collectTargets(w.document as any);
