@@ -1,6 +1,6 @@
 # 玩家安装教程
 
-推荐从 [Releases](https://github.com/sea137/steam-workshop-translator/releases/latest) 下载 **HaijingTools-v0.3.1-Windows-WithModel.zip**。这是含离线模型的完整包，普通玩家不要选 Source code。
+推荐从 [Releases](https://github.com/sea137/steam-workshop-translator/releases/latest) 下载 **HaijingTools-v0.3.2-Windows-WithModel.zip**。这是含离线模型的完整包，普通玩家不要选 Source code。
 
 ## 第一次安装
 
@@ -8,7 +8,7 @@
 2. 从 Steam 菜单选择 **退出**，双击 **Install.cmd**。
 3. 双击 **安装离线翻译.cmd**，等待自动配置完成。完整包的模型会自动读取，不必另下模型或词库；首次要联网下载私有 Python / 推理引擎。若缺少 Millennium，第二步会下载安装官方 3.6.2 框架并校验 SHA256。
 4. 启动 Steam → **Steam → Millennium → Plugins** → 启用 **海京Tools**。
-5. 打开工坊，看到 **海京翻译工具 · 0.3.1** 后，在翻译源选择 **本地模型（首选推荐）**，点击 **翻译本页**。评论需要勾选“包括评论”。
+5. 打开工坊，看到 **海京翻译工具 · 0.3.2** 后，在翻译源选择 **本地模型（首选推荐）**，点击 **翻译本页**。评论需要勾选“包括评论”。
 
 下次电脑重启后，双击 **启动离线翻译.cmd**。不使用时运行 **停止离线翻译.cmd**。模型只处理英中；其他语言可用 Google 备用源。机器翻译不能保证专有名词准确。
 

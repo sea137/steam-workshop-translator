@@ -76,7 +76,7 @@
 
 下载放这里：https://github.com/sea137/steam-workshop-translator/releases/latest
 
-请下载 **Assets 里的 HaijingTools-v0.3.1-Windows-WithModel.zip**，普通用户不用下载 Source code。解压后退出 Steam，运行 Install.cmd；重新打开 Steam，到 Millennium → Plugins 启用「海京Tools」。工坊右下角的功能面板叫「海京翻译工具」。
+请下载 **Assets 里的 HaijingTools-v0.3.2-Windows-WithModel.zip**，普通用户不用下载 Source code。解压后退出 Steam，运行 Install.cmd；重新打开 Steam，到 Millennium → Plugins 启用「海京Tools」。工坊右下角的功能面板叫「海京翻译工具」。
 
 连接失败先检查当前网络能否访问 Google。反馈请带上插件版本、公开工坊链接和错误截图，注意遮住账号信息。
 

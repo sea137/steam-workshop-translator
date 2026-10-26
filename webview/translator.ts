@@ -5,6 +5,28 @@ type Tools = { importDictionary: (payload: string) => Promise<unknown> };
 const SOURCES: Record<string, string> = { offline: '本地模型', auto: '自动切换', google: 'Google', mymemory: 'MyMemory', dictionary: '本地词库' };
 const OWN = '[data-swt-owned]';
 const PREFS = 'swt.preferences.v1';
+// Steam's workshop paging links and the paging arrows live in the bottom-right corner, under the
+// panel's default anchor. The class names are matched loosely (any "…paging…" class or id plus
+// `.pagebtn`) because they differ between the browse page and the app page, and a loose match only
+// ever pushes the panel up — it cannot hide anything.
+const PAGING = '[class*="aging"],[id*="aging"],.pagebtn';
+const PANEL_MARGIN = 24;
+
+export type Box = { left: number; top: number; right: number; bottom: number };
+
+const laidOut = (b: Box) => b.right - b.left > 0 && b.bottom - b.top > 0;
+const overlaps = (a: Box, b: Box) =>
+  a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+
+/** How far the panel must move up to stop covering a paging control, capped so it stays usable. */
+export function panelLift(panel: Box, blockers: Box[], viewportHeight: number): number {
+  let lift = 0;
+  for (const b of blockers) {
+    if (!laidOut(b) || !overlaps(panel, b)) continue; // hidden, unlaid-out, or out of the way
+    lift = Math.max(lift, panel.bottom - b.top + 12);
+  }
+  return lift <= 0 ? 0 : Math.min(lift, Math.max(0, Math.round(viewportHeight * 0.55)));
+}
 
 function userError(error: unknown): string {
   const raw = typeof error === 'string' ? error : error && typeof error === 'object' && 'message' in error
@@ -108,6 +130,8 @@ const CSS = `
 #swt-panel input{margin:0;accent-color:#67c1f5} #swt-panel small{display:block;color:#93a9bb;font-size:11px;margin-top:7px}
 #swt-panel [role=status]{margin-top:8px;overflow-wrap:anywhere} #swt-panel .swt-fold{float:right;margin:0;padding:1px 7px}
 #swt-panel{max-height:85vh;overflow:auto} #swt-panel select{display:block;width:100%;padding:5px;margin:7px 0;background:#243b50;color:#fff;border:1px solid #426378;border-radius:3px;font:inherit}
+#swt-panel strong{cursor:move;user-select:none;-webkit-user-select:none} #swt-panel.swt-folded{width:auto;padding:7px 10px}
+#swt-panel.swt-folded strong{font-size:13px} #swt-panel .swt-reset{background:#243b50;color:#cfe3f0;margin:6px 0 0}
 #swt-panel summary{cursor:pointer;color:#9fd9f4;margin-top:8px} #swt-panel .swt-source{display:block;margin:7px 0 0} #swt-panel [role=status]{white-space:pre-line}
 .swt-translation{display:block!important;white-space:pre-wrap;color:#9fd9f4!important;font-size:13px!important;font-weight:normal!important;line-height:1.6!important;overflow-wrap:anywhere;max-height:none!important;margin-top:5px;padding:4px 6px;border-left:2px solid #4994b9;background:#14222d80}
 .swt-translation:before{content:attr(data-swt-label);color:#76abc7;font-size:11px} .swt-error{color:#f2bb80!important}
@@ -117,7 +141,8 @@ const CSS = `
 export function mountTranslator(doc: Document, translate: Translate, clearCache: () => Promise<unknown>, translateBatch?: TranslateBatch, tools?: Tools) {
   if (doc.querySelector('#swt-panel')) return () => {};
   const win = doc.defaultView!;
-  let prefs = { auto: false, comments: false, provider: 'auto' };
+  let prefs: { auto: boolean; comments: boolean; provider: string; folded?: boolean; panel?: { x: number; y: number } } =
+    { auto: false, comments: false, provider: 'auto' };
   try { prefs = { ...prefs, ...JSON.parse(win.localStorage.getItem(PREFS) || '{}') }; } catch {}
   if (!Object.prototype.hasOwnProperty.call(SOURCES, prefs.provider)) prefs.provider = 'auto';
   const save = () => { try { win.localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch {} };
@@ -125,10 +150,80 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   doc.head.append(style);
   const panel = doc.createElement('aside'); panel.id = 'swt-panel'; panel.dataset.swtOwned = '';
   panel.setAttribute('aria-label', '海京翻译工具');
-  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.1'; panel.append(title);
+  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.2'; title.title = '按住可拖动面板'; panel.append(title);
   const fold = doc.createElement('button'); fold.textContent = '−'; fold.className = 'swt-fold'; fold.title = '收起 / 展开'; panel.append(fold);
-  const content = doc.createElement('div'); panel.append(content);
-  fold.onclick = () => { content.hidden = !content.hidden; fold.textContent = content.hidden ? '＋' : '−'; };
+  const content = doc.createElement('div'); content.className = 'swt-body'; panel.append(content);
+
+  // The panel is anchored bottom-right, where Steam puts its paging links; unless the player has
+  // dragged it somewhere themselves, lift it clear of those controls after every layout change.
+  let dragged = false;
+  let drag: { dx: number; dy: number; moved: boolean } | null = null;
+  const clamp = (value: number, max: number) => Math.min(Math.max(8, value), Math.max(8, max));
+  const placeAt = (left: number, top: number) => {
+    panel.style.left = `${clamp(left, (win.innerWidth || 0) - (panel.offsetWidth || 292) - 8)}px`;
+    panel.style.top = `${clamp(top, (win.innerHeight || 0) - (panel.offsetHeight || 240) - 8)}px`;
+    panel.style.right = 'auto'; panel.style.bottom = 'auto';
+    dragged = true;
+  };
+  const place = () => {
+    if (dragged) return;
+    panel.style.left = ''; panel.style.top = ''; panel.style.right = ''; panel.style.bottom = '';
+    const rect = panel.getBoundingClientRect() as Box;
+    const blockers = [...doc.querySelectorAll(PAGING)].map(el => el.getBoundingClientRect() as Box);
+    // If Steam renames those classes, hit-test the panel's lower edge instead: whatever clickable
+    // control sits under it there is what the player cannot reach.
+    if (!blockers.some(b => laidOut(b) && overlaps(rect, b))) {
+      const under = coveredControl(rect);
+      if (under) blockers.push(under);
+    }
+    const lift = panelLift(rect, blockers, win.innerHeight || 0);
+    if (lift > 0) panel.style.bottom = `${PANEL_MARGIN + lift}px`;
+  };
+  const coveredControl = (rect: Box): Box | null => {
+    if (typeof doc.elementFromPoint !== 'function') return null;
+    const previous = panel.style.pointerEvents;
+    panel.style.pointerEvents = 'none';
+    try {
+      for (const y of [rect.bottom - 14, rect.bottom - 42]) {
+        for (const x of [rect.right - 14, (rect.left + rect.right) / 2]) {
+          const el = doc.elementFromPoint(x, y);
+          const target = el && !el.closest(OWN) ? el.closest('a,button,[role=button]') : null;
+          if (target) return target.getBoundingClientRect() as Box;
+        }
+      }
+    } catch { /* elementFromPoint unavailable */ } finally { panel.style.pointerEvents = previous; }
+    return null;
+  };
+  if (prefs.panel) placeAt(prefs.panel.x, prefs.panel.y);
+  title.addEventListener('mousedown', event => {
+    if (event.button !== 0) return;
+    const rect = panel.getBoundingClientRect();
+    drag = { dx: event.clientX - rect.left, dy: event.clientY - rect.top, moved: false };
+    event.preventDefault();
+  });
+  const onMove = (event: MouseEvent) => {
+    if (!drag) return;
+    drag.moved = true;
+    placeAt(event.clientX - drag.dx, event.clientY - drag.dy);
+  };
+  const onUp = () => {
+    if (!drag) return;
+    // A click on the title must not pin the panel; only a real drag saves a position.
+    if (drag.moved) { prefs.panel = { x: parseFloat(panel.style.left) || 0, y: parseFloat(panel.style.top) || 0 }; save(); }
+    else dragged = false;
+    drag = null;
+  };
+  win.addEventListener('mousemove', onMove);
+  win.addEventListener('mouseup', onUp);
+  const setFolded = (folded: boolean) => {
+    content.hidden = folded;
+    fold.textContent = folded ? '＋' : '−';
+    panel.classList.toggle('swt-folded', folded);
+    prefs.folded = folded; save();
+    place();
+  };
+  fold.onclick = () => setFolded(!content.hidden);
+  setFolded(!!prefs.folded);
   const button = (text: string, handler: () => void, primary = false) => {
     const b = doc.createElement('button'); b.textContent = text; if (primary) b.className = 'swt-primary';
     b.onclick = handler; content.append(b); return b;
@@ -198,6 +293,13 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   instructions.textContent = '整句离线翻译：打开安装包，运行「安装离线翻译.cmd」下载模型及运行环境；以后运行「启动离线翻译.cmd」。准备好后选择「本地模型」。无需自己安装 Python。';
   help.append(instructions);
   const dictionaryHelp = doc.createElement('small'); dictionaryHelp.textContent = '词库示例：{"Field Tents":"野外帐篷"}。导入会替换自定义词库；内置词条保留。最大 2 MB / 10000 条。'; help.append(dictionaryHelp);
+  const resetPosition = doc.createElement('button'); resetPosition.className = 'swt-reset'; resetPosition.textContent = '面板位置复位';
+  resetPosition.title = '回到右下角，并自动避开翻页按钮';
+  resetPosition.onclick = () => {
+    delete prefs.panel; save(); dragged = false; drag = null; place();
+    status.classList.remove('swt-error'); status.textContent = '面板已复位到右下角；如仍挡住翻页按钮可拖动标题栏移开。';
+  };
+  help.append(resetPosition);
   if (tools) {
     const upload = doc.createElement('input'); upload.type = 'file'; upload.accept = '.json,application/json'; upload.hidden = true;
     const importButton = doc.createElement('button'); importButton.textContent = '导入本地词库'; importButton.onclick = () => upload.click();
@@ -216,6 +318,13 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   }
   content.append(help);
   doc.body.append(panel);
+  place();
+  // Steam renders the paging controls after the items; re-check after layout settles and whenever
+  // the page scrolls or the window resizes.
+  let reflow: ReturnType<typeof setTimeout>;
+  const onReflow = () => { clearTimeout(reflow); reflow = setTimeout(place, 150); };
+  win.addEventListener('resize', onReflow);
+  win.addEventListener('scroll', onReflow, true);
 
   async function run() {
     if (disposed) return;
@@ -325,7 +434,9 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   observer.observe(doc.body, { subtree: true, childList: true, characterData: true });
   if (prefs.auto) void run();
   return () => {
-    disposed = true; epoch++; clearTimeout(timer); observer.disconnect();
+    disposed = true; epoch++; clearTimeout(timer); clearTimeout(reflow); observer.disconnect();
+    win.removeEventListener('resize', onReflow); win.removeEventListener('scroll', onReflow, true);
+    win.removeEventListener('mousemove', onMove); win.removeEventListener('mouseup', onUp);
     records.forEach((r, el) => removeTranslation(el, r.node)); records.clear(); panel.remove(); style.remove();
   };
 }

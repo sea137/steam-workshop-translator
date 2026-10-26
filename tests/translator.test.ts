@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test';
 import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
-import { collectTargets, isWorkshopURL, mountTranslator, originalText, splitText } from '../webview/translator';
+import { collectTargets, isWorkshopURL, mountTranslator, originalText, panelLift, splitText } from '../webview/translator';
 
 const page = (html = '<div class="workshopItemTitle">Field Tents</div>') => {
   const w = new Window({ url: 'https://steamcommunity.com/app/294100/workshop/' });
@@ -211,4 +211,53 @@ test('automatic mode picks up newly loaded items and comments stay opt-in', asyn
   await waitFor(() => next.querySelector('.swt-translation') !== null);
   expect(next.querySelector('.swt-translation')).not.toBeNull();
   expect(inputs[1].checked).toBe(false); stop();
+});
+
+// The panel is anchored in the corner where Steam draws its paging links (#issue: 会拦住翻页按钮).
+test('the panel lifts only as far as needed to clear the paging controls', () => {
+  const panel = { left: 900, right: 1192, top: 600, bottom: 900 };
+  expect(panelLift(panel, [], 900)).toBe(0);
+  // Overlapping the paging row by 60px lifts it 60px plus a small gap.
+  expect(panelLift(panel, [{ left: 880, right: 1200, top: 840, bottom: 880 }], 900)).toBe(72);
+  // Lifting never pushes more than half the window out of place.
+  expect(panelLift(panel, [{ left: 0, right: 1200, top: 0, bottom: 900 }], 900)).toBe(495);
+  // Controls elsewhere on the page, and hidden ones, move nothing.
+  expect(panelLift(panel, [{ left: 10, right: 100, top: 10, bottom: 60 }], 900)).toBe(0);
+  expect(panelLift(panel, [{ left: 0, right: 0, top: 0, bottom: 0 }], 900)).toBe(0);
+});
+
+test('the fold button shrinks the panel and the choice survives a page navigation', () => {
+  const w = page();
+  let stop = mountTranslator(w.document as any, good, async () => true);
+  const panel = () => w.document.querySelector('#swt-panel') as HTMLElement;
+  expect(panel().classList.contains('swt-folded')).toBe(false);
+  click(w, '−');
+  expect(panel().classList.contains('swt-folded')).toBe(true);
+  expect((w.document.querySelector('.swt-body') as HTMLElement).hidden).toBe(true);
+  expect(w.localStorage.getItem('swt.preferences.v1')).toContain('"folded":true');
+  stop();
+  stop = mountTranslator(w.document as any, good, async () => true);
+  expect(panel().classList.contains('swt-folded')).toBe(true);
+  expect((w.document.querySelector('.swt-body') as HTMLElement).hidden).toBe(true);
+  stop();
+});
+
+test('the panel can be dragged off the corner and stays where the player put it', () => {
+  const w = page();
+  let stop = mountTranslator(w.document as any, good, async () => true);
+  const panel = () => w.document.querySelector('#swt-panel') as HTMLElement;
+  const handle = panel().querySelector('strong')!;
+  handle.dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 100, clientY: 100 }));
+  w.dispatchEvent(new w.MouseEvent('mousemove', { clientX: 200, clientY: 150 }));
+  w.dispatchEvent(new w.MouseEvent('mouseup', {}));
+  expect(panel().style.left).toBe('100px'); expect(panel().style.top).toBe('50px');
+  expect(w.localStorage.getItem('swt.preferences.v1')).toContain('"panel":{"x":100,"y":50}');
+  stop();
+  stop = mountTranslator(w.document as any, good, async () => true);
+  expect(panel().style.left).toBe('100px'); expect(panel().style.top).toBe('50px');
+  // The reset button in the help section returns it to the corner.
+  click(w, '面板位置复位');
+  expect(panel().style.left).toBe(''); expect(panel().style.top).toBe('');
+  expect(w.localStorage.getItem('swt.preferences.v1')).not.toContain('"panel"');
+  stop();
 });
