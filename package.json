@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "steam-workshop-translator",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "scripts": {
     "build": "starlight pack --release",
     "prepare": "starlight lsp",

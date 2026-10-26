@@ -5,6 +5,61 @@ type Tools = { importDictionary: (payload: string) => Promise<unknown> };
 const SOURCES: Record<string, string> = { offline: '本地模型', auto: '自动切换', google: 'Google', mymemory: 'MyMemory', dictionary: '本地词库' };
 const OWN = '[data-swt-owned]';
 const PREFS = 'swt.preferences.v1';
+const ARTICLE = '.EventDetailsBody,.eventdetails_body,.announcement_body,.changeLogBody,.workshopAnnouncement';
+const SEGMENT = '[data-swt-segment]';
+
+function visible(element: Element): boolean {
+  for (let current: Element | null = element; current; current = current.parentElement) {
+    const style = element.ownerDocument.defaultView?.getComputedStyle(current);
+    if (current.hasAttribute('hidden') || current.getAttribute('aria-hidden') === 'true' || style?.display === 'none' || style?.visibility === 'hidden') return false;
+  }
+  return true;
+}
+
+function libraryArticle(doc: Document): Element | undefined {
+  if (new URL(doc.URL).hostname !== 'steamloopback.host') return undefined;
+  const height = doc.defaultView!.innerHeight;
+  return [...doc.querySelectorAll('.EventDetailsBody')].filter(visible).map(body => body.closest('.PartnerEvent') || body)
+    .sort((a, b) => {
+      const score = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        return Math.max(0, Math.min(r.bottom, height) - Math.max(r.top, 0));
+      };
+      return score(b) - score(a);
+    })[0];
+}
+
+/** Move the original nodes, preserving link handlers and Steam's markup. */
+function prepareParagraphs(doc: Document, wrappers: Set<Element>) {
+  const blocks = /^(P|DIV|H[1-6]|LI|UL|OL|BLOCKQUOTE|SECTION|ARTICLE|TABLE|THEAD|TBODY|TR|TD|TH|FIGURE|FIGCAPTION|HR|PRE)$/;
+  const visit = (parent: Element) => {
+    let group: Node[] = [];
+    const flush = () => {
+      if (group.length && group.some(n => /\S/.test(n.textContent || ''))) {
+        const span = doc.createElement('span'); span.setAttribute('data-swt-segment', '');
+        parent.insertBefore(span, group[0]); group.forEach(n => span.append(n)); wrappers.add(span);
+      }
+      group = [];
+    };
+    for (const node of [...parent.childNodes]) {
+      const el = node.nodeType === 1 ? node as Element : undefined;
+      if (el?.matches(`${OWN},${SEGMENT},script,style,textarea,code,pre,button,input,select`)) { flush(); continue; }
+      if (el?.tagName === 'BR') { flush(); continue; }
+      if (el && blocks.test(el.tagName)) { flush(); visit(el); }
+      else group.push(node);
+    }
+    flush();
+  };
+  doc.querySelectorAll(ARTICLE).forEach(root => {
+    const active = libraryArticle(doc);
+    if (active && !active.contains(root) && active !== root) return;
+    if (!root.parentElement?.closest(ARTICLE)) visit(root);
+  });
+}
+
+function unwrapParagraphs(wrappers: Set<Element>) {
+  wrappers.forEach(el => el.replaceWith(...el.childNodes)); wrappers.clear();
+}
 // Classic Steam controls have stable names; current React carousel arrows are
 // small icon buttons with hashed classes, so inspect those semantically below.
 const PAGING = '.pagebtn,.workshop_paging_controls,.workshopBrowsePagingControls,.slider_button,[class*="paging"],[class*="Paging"],[class*="pagination"],a[rel="next"],a[rel="prev"],[aria-label*="下一"],[aria-label*="上一"],[aria-label*="Next"],[aria-label*="Previous"]';
@@ -83,6 +138,14 @@ export function isSupportedSteamURL(url: string): boolean {
   } catch { return false; }
 }
 
+export function isSupportedSteamDocument(doc: Document): boolean {
+  if (isSupportedSteamURL(doc.URL)) return true;
+  try {
+    const u = new URL(doc.URL);
+    return u.protocol === 'https:' && u.hostname === 'steamloopback.host' && !!libraryArticle(doc);
+  } catch { return false; }
+}
+
 // Iterate Unicode code points so a surrogate pair never splits across requests.
 export function splitText(text: string, limit = 1100): string[] {
   const chars = Array.from(text);
@@ -116,6 +179,7 @@ export function originalText(element: Element): string {
 }
 
 export function collectTargets(doc: Document, comments = false): Element[] {
+  const active = libraryArticle(doc);
   const selectors = [
     '.workshopItemTitle', '.workshopItemDescription', '.workshopItemPreviewDescription',
     '.workshopItemShortDescription', '.workshopItemCollectionTitle', '.workshopItemCollectionDescription',
@@ -127,6 +191,18 @@ export function collectTargets(doc: Document, comments = false): Element[] {
     selectors.push('.apphub_CardContentTitle', '.apphub_CardTextContent', '.apphub_CardContentNews');
   if (comments) selectors.push('.commentthread_comment_text');
   const candidates = new Set<Element>(doc.querySelectorAll(selectors.join(',')));
+  doc.querySelectorAll(ARTICLE).forEach(root => {
+    const segments = root.querySelectorAll(SEGMENT);
+    if (segments.length) { candidates.delete(root); segments.forEach(e => candidates.add(e)); }
+  });
+  // The library's own document title is simply Steam; its article title is in
+  // this stable container, alongside short date/category labels.
+  doc.querySelectorAll('.LibraryEventTitleContainer').forEach(container => {
+    const title = [...container.querySelectorAll('h1,h2,h3,div')]
+      .filter(e => !e.closest(OWN) && [...e.children].every(c => c.matches(OWN)))
+      .sort((a, b) => originalText(b).length - originalText(a).length)[0];
+    if (title) candidates.add(title);
+  });
   // Steam's newer React workshop uses hashed classes; item URLs provide a stable seam.
   doc.querySelectorAll<HTMLAnchorElement>('a[href*="/sharedfiles/filedetails/"]').forEach(a => {
     if (a.closest(OWN) || a.querySelector('img,button') || !originalText(a)) return;
@@ -163,10 +239,8 @@ export function collectTargets(doc: Document, comments = false): Element[] {
   // Avoid translating both an anchor and its title container.
   return [...candidates].filter(e => {
     if (e.closest(OWN)) return false;
-    for (let current: Element | null = e; current; current = current.parentElement) {
-      const style = doc.defaultView?.getComputedStyle(current);
-      if (current.hasAttribute('hidden') || current.getAttribute('aria-hidden') === 'true' || style?.display === 'none' || style?.visibility === 'hidden') return false;
-    }
+    if (active && e !== active && !active.contains(e)) return false;
+    if (!visible(e)) return false;
     for (let parent = e.parentElement; parent; parent = parent.parentElement)
       if (candidates.has(parent)) return false;
     return true;
@@ -202,7 +276,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   doc.head.append(style);
   const panel = doc.createElement('aside'); panel.id = 'swt-panel'; panel.dataset.swtOwned = '';
   panel.setAttribute('aria-label', '海京翻译工具');
-  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.3'; title.title = '按住可拖动面板'; panel.append(title);
+  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.4'; title.title = '按住可拖动面板'; panel.append(title);
   const fold = doc.createElement('button'); fold.textContent = '−'; fold.className = 'swt-fold'; fold.title = '收起 / 展开'; panel.append(fold);
   const content = doc.createElement('div'); content.className = 'swt-body'; panel.append(content);
 
@@ -313,13 +387,14 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   };
   let epoch = 0, busy = false, disposed = false, rerun = false;
   const records = new Map<Element, { source: string; node: HTMLElement; provider: string }>();
+  const paragraphs = new Set<Element>();
   const removeTranslation = (el: Element, node: HTMLElement) => { node.remove(); el.removeAttribute('data-swt-host'); };
   const sessionCache = new Map<string, string>();
   const sessionOrigins = new Map<string, { providers: string[]; dictionary: boolean }>();
   const go = button('翻译本页', () => { void run(); }, true);
   const restore = button('还原', () => {
     epoch++; prefs.auto = false; auto.checked = false; save();
-    records.forEach((r, el) => removeTranslation(el, r.node)); records.clear(); status.textContent = '已还原；自动翻译已关闭。';
+    records.forEach((r, el) => removeTranslation(el, r.node)); records.clear(); unwrapParagraphs(paragraphs); status.textContent = '已还原；自动翻译已关闭。';
   });
   restore.title = '移除译文，停止当前翻译，并关闭自动翻译';
   button('清缓存', () => {
@@ -420,6 +495,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
     go.disabled = true; go.textContent = '翻译中…';
     try {
       for (const [el, r] of records) if (!el.isConnected) { removeTranslation(el, r.node); records.delete(el); }
+      prepareParagraphs(doc, paragraphs);
       const targets = collectTargets(doc, prefs.comments).map(el => ({ el, source: originalText(el) })).filter(({ el, source }) => {
         const previous = records.get(el);
         if (previous && (previous.source !== source || !previous.node.isConnected)) { removeTranslation(el, previous.node); records.delete(el); }
@@ -524,6 +600,6 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
     disposed = true; epoch++; clearTimeout(timer); clearTimeout(reflow); observer.disconnect(); panelResize?.disconnect();
     win.removeEventListener('resize', onReflow); win.removeEventListener('scroll', onReflow, true);
     win.removeEventListener('mousemove', onMove); win.removeEventListener('mouseup', onUp);
-    records.forEach((r, el) => removeTranslation(el, r.node)); records.clear(); panel.remove(); style.remove();
+    records.forEach((r, el) => removeTranslation(el, r.node)); records.clear(); unwrapParagraphs(paragraphs); panel.remove(); style.remove();
   };
 }

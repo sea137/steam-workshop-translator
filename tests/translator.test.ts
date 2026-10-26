@@ -1,7 +1,8 @@
 import { test, expect } from 'bun:test';
 import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
-import { collectTargets, isWorkshopURL, isSupportedSteamURL, mountTranslator, originalText, panelLift, splitText } from '../webview/translator';
+import { watchSteamDocument } from '../webview/lifecycle';
+import { collectTargets, isWorkshopURL, isSupportedSteamURL, isSupportedSteamDocument, mountTranslator, originalText, panelLift, splitText } from '../webview/translator';
 
 const page = (html = '<div class="workshopItemTitle">Field Tents</div>') => {
   const w = new Window({ url: 'https://steamcommunity.com/app/294100/workshop/' });
@@ -19,6 +20,84 @@ const click = (w: Window, label: string) => {
   expect(b).toBeDefined(); b.click();
 };
 const good = async (s: string) => JSON.stringify({ ok: true, text: `中文 ${s}` });
+
+test('library update popup is eligible even though the client URL stays unchanged', () => {
+  const w = new Window({ url: 'https://steamloopback.host/index.html' });
+  expect(isSupportedSteamDocument(w.document as any)).toBe(false);
+  w.document.body.innerHTML = '<div class="EventDetailsBody">Example game update.</div>';
+  expect(isSupportedSteamDocument(w.document as any)).toBe(true);
+});
+
+test('library update paragraphs translate directly below each original and restore exact markup', async () => {
+  const w = new Window({ url: 'https://steamloopback.host/index.html' });
+  w.document.body.innerHTML = '<div class="PartnerEvent InLibraryView"><div class="LibraryEventTitleContainer"><div>News</div><div>Example update title</div></div>' +
+    '<div class="EventDetailsBody">First <b>important</b> paragraph.<br><br>Second <a href="https://example.com/">linked</a> paragraph.<br><h3>Compatibility</h3><p>Third paragraph.</p><ul><li>First item.</li><li>Second item.<ul><li>Nested item.</li></ul></li></ul></div></div>';
+  const original = w.document.body.innerHTML;
+  const link = w.document.querySelector('a');
+  const stop = mountTranslator(w.document as any, good, async () => true,
+    async texts => ({ ok: true, items: texts.map(text => ({ ok: true, text: '中文 ' + text, provider: 'offline' })) }));
+  click(w as any, '翻译本页');
+  await waitFor(() => w.document.querySelector('[role=status]')!.textContent!.includes('已完成'));
+  const body = w.document.querySelector('.EventDetailsBody')!;
+  expect(body.querySelectorAll('.swt-translation')).toHaveLength(7);
+  const segments = [...body.querySelectorAll('[data-swt-segment]')];
+  expect(segments.map(e => originalText(e as any))).toEqual(['First important paragraph.', 'Second linked paragraph.', 'Compatibility', 'Third paragraph.', 'First item.', 'Second item.', 'Nested item.']);
+  expect(body.querySelector('h3 > [data-swt-segment] > .swt-translation')).not.toBeNull();
+  expect(body.querySelector('a')).toBe(link);
+  click(w as any, '还原'); stop();
+  expect(w.document.body.innerHTML).toBe(original);
+  expect(w.document.querySelector('a')).toBe(link);
+});
+
+test('library watcher opens, closes and reopens in-place without duplicate panels', async () => {
+  const w = new Window({ url: 'https://steamloopback.host/index.html' });
+  const stop = watchSteamDocument(w.document as any, { translate: good, clearCache: async () => true,
+    translateBatch: async texts => ({ ok: true, items: texts.map(text => ({ ok: true, text: '中文 ' + text })) }),
+    importDictionary: async () => ({ ok: true }) });
+  expect(w.document.querySelector('#swt-panel')).toBeNull();
+  const body = w.document.createElement('div'); body.className = 'EventDetailsBody'; body.textContent = 'First update.'; w.document.body.append(body);
+  await waitFor(() => !!w.document.querySelector('#swt-panel'));
+  click(w as any, '翻译本页'); await waitFor(() => !!body.querySelector('.swt-translation'));
+  body.remove(); await waitFor(() => !w.document.querySelector('#swt-panel'));
+  w.document.body.append(body); await waitFor(() => !!w.document.querySelector('#swt-panel'));
+  expect(w.document.querySelectorAll('#swt-panel')).toHaveLength(1);
+  stop(); expect(w.document.querySelector('#swt-panel')).toBeNull();
+});
+
+test('completed news paragraphs appear before later translation batches finish', async () => {
+  const w = page('<div class="EventDetailsBody"><p>First paragraph.</p><p>Second paragraph.</p><p>Third paragraph.</p></div>');
+  w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ provider: 'offline' }));
+  let release!: (value: unknown) => void; let calls = 0;
+  const stop = mountTranslator(w.document as any, good, async () => true, async texts => {
+    if (++calls === 2) return new Promise(resolve => release = resolve);
+    return { ok: true, items: texts.map(text => ({ ok: true, text: '中文 ' + text })) };
+  });
+  click(w, '翻译本页'); await waitFor(() => calls === 2);
+  expect(w.document.querySelectorAll('p > [data-swt-segment] > .swt-translation')).toHaveLength(2);
+  expect(w.document.querySelector('p:last-child .swt-translation')).toBeNull();
+  release({ ok: true, items: [{ ok: true, text: '中文 Third paragraph.' }] });
+  await waitFor(() => w.document.querySelectorAll('.EventDetailsBody .swt-translation').length === 3); stop();
+});
+
+test('library translates the visible article instead of preloaded previous and next articles', () => {
+  const w = new Window({ url: 'https://steamloopback.host/index.html' });
+  w.document.body.innerHTML = '<div class="PartnerEvent"><div class="EventDetailsBody">Previous article.</div></div>' +
+    '<div class="PartnerEvent"><div class="LibraryEventTitleContainer"><div>Current update title</div></div><div class="EventDetailsBody">Current article.</div></div>' +
+    '<div class="PartnerEvent"><div class="EventDetailsBody">Next article.</div></div>';
+  const events = w.document.querySelectorAll('.PartnerEvent');
+  [events[0], events[1], events[2]].forEach((e, i) => {
+    e.getBoundingClientRect = () => ({ top: (i - 1) * 2000, bottom: (i - 1) * 2000 + 900 } as any);
+  });
+  expect(collectTargets(w.document as any).map(originalText)).toEqual(['Current article.', 'Current update title']);
+  events[1].setAttribute('hidden', '');
+  expect(collectTargets(w.document as any).map(originalText)).not.toContain('Current article.');
+});
+
+test('a foreign page cannot opt into the library translator by copying Steam classes', () => {
+  const w = new Window({ url: 'https://steamloopback.host.evil.test/index.html' });
+  w.document.body.innerHTML = '<div class="EventDetailsBody">Example update.</div>';
+  expect(isSupportedSteamDocument(w.document as any)).toBe(false);
+});
 
 test('news, announcements and change notes are supported without matching unrelated sites', () => {
   for (const url of ['https://steamcommunity.com/app/294100/news/',
@@ -46,7 +125,7 @@ test('announcement detail selects its actual headline and body while preserving 
   w.document.body.innerHTML = '<div class="hashed-title">New update</div><div class="EventDetailsBody">New weapons.<br>Read <a href="https://example.com/">the details</a>.</div><div class="author">Author Name</div>';
   const stop = mountTranslator(w.document as any, good, async () => true);
   click(w, '翻译本页'); await tick();
-  expect(w.document.querySelectorAll('.swt-translation')).toHaveLength(2);
+  expect(w.document.querySelectorAll('.swt-translation')).toHaveLength(3);
   expect(w.document.querySelector('.EventDetailsBody a')!.getAttribute('href')).toBe('https://example.com/');
   expect(w.document.querySelector('.author .swt-translation')).toBeNull();
   click(w, '还原'); expect(w.document.querySelectorAll('.swt-translation')).toHaveLength(0); stop();
