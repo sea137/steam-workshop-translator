@@ -5,11 +5,9 @@ type Tools = { importDictionary: (payload: string) => Promise<unknown> };
 const SOURCES: Record<string, string> = { offline: '本地模型', auto: '自动切换', google: 'Google', mymemory: 'MyMemory', dictionary: '本地词库' };
 const OWN = '[data-swt-owned]';
 const PREFS = 'swt.preferences.v1';
-// Steam's workshop paging links and the paging arrows live in the bottom-right corner, under the
-// panel's default anchor. The class names are matched loosely (any "…paging…" class or id plus
-// `.pagebtn`) because they differ between the browse page and the app page, and a loose match only
-// ever pushes the panel up — it cannot hide anything.
-const PAGING = '[class*="aging"],[id*="aging"],.pagebtn';
+// Classic Steam controls have stable names; current React carousel arrows are
+// small icon buttons with hashed classes, so inspect those semantically below.
+const PAGING = '.pagebtn,.workshop_paging_controls,.workshopBrowsePagingControls,.slider_button,[class*="paging"],[class*="Paging"],[class*="pagination"],a[rel="next"],a[rel="prev"],[aria-label*="下一"],[aria-label*="上一"],[aria-label*="Next"],[aria-label*="Previous"]';
 const PANEL_MARGIN = 24;
 
 export type Box = { left: number; top: number; right: number; bottom: number };
@@ -68,7 +66,20 @@ export function isWorkshopURL(url: string): boolean {
     return u.protocol === 'https:' && u.hostname === 'steamcommunity.com' &&
       (/^\/app\/\d+\/workshop(?:\/|$)/.test(u.pathname) ||
        /^\/workshop(?:\/|$)/.test(u.pathname) ||
-       /^\/sharedfiles\/filedetails\/?$/.test(u.pathname));
+       /^\/sharedfiles\/filedetails\/?$/.test(u.pathname) ||
+       /^\/sharedfiles\/filedetails\/changelog\/\d+\/?$/.test(u.pathname));
+  } catch { return false; }
+}
+
+export function isSupportedSteamURL(url: string): boolean {
+  if (isWorkshopURL(url)) return true;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return false;
+    if (u.hostname === 'store.steampowered.com') return /^\/news\/app\/\d+(?:\/|$)/.test(u.pathname);
+    return u.hostname === 'steamcommunity.com' && (
+      /^\/app\/\d+\/(?:news|allnews|announcements|events)(?:\/|$)/.test(u.pathname) ||
+      /^\/(?:games|ogg|gid|groups)\/[^/]+\/(?:announcements|events)(?:\/|$)/.test(u.pathname));
   } catch { return false; }
 }
 
@@ -91,6 +102,13 @@ export function splitText(text: string, limit = 1100): string[] {
 
 export function originalText(element: Element): string {
   const clone = element.cloneNode(true) as Element;
+  // News cards contain both desktop and mobile summaries. Drop hidden copies.
+  const live = [...element.querySelectorAll('*')], copies = [...clone.querySelectorAll('*')];
+  live.forEach((node, i) => {
+    const style = element.ownerDocument.defaultView?.getComputedStyle(node);
+    if (node.hasAttribute('hidden') || node.getAttribute('aria-hidden') === 'true' || style?.display === 'none' || style?.visibility === 'hidden')
+      copies[i].remove();
+  });
   clone.querySelectorAll(`${OWN},script,style,textarea,pre,code,button,input,select`).forEach(e => e.remove());
   clone.querySelectorAll('br').forEach(e => e.replaceWith('\n'));
   clone.querySelectorAll('p,div,li,h1,h2,h3,h4,blockquote').forEach(e => e.append('\n'));
@@ -102,7 +120,11 @@ export function collectTargets(doc: Document, comments = false): Element[] {
     '.workshopItemTitle', '.workshopItemDescription', '.workshopItemPreviewDescription',
     '.workshopItemShortDescription', '.workshopItemCollectionTitle', '.workshopItemCollectionDescription',
     '.eventListingTitle', '.eventListingSummary',
+    '.EventDetailsBody', '.eventdetails_body', '.announcement_body', '.announcement_title',
+    '.workshopAnnouncement', '.changeLogBody', '.changeLogTitle', '.changeLogRow',
   ];
+  if (!isWorkshopURL(doc.URL) && isSupportedSteamURL(doc.URL))
+    selectors.push('.apphub_CardContentTitle', '.apphub_CardTextContent', '.apphub_CardContentNews');
   if (comments) selectors.push('.commentthread_comment_text');
   const candidates = new Set<Element>(doc.querySelectorAll(selectors.join(',')));
   // Steam's newer React workshop uses hashed classes; item URLs provide a stable seam.
@@ -112,9 +134,39 @@ export function collectTargets(doc: Document, comments = false): Element[] {
     if (u.hostname !== 'steamcommunity.com' || !/^\/sharedfiles\/filedetails\/$/.test(u.pathname)) return;
     if (u.searchParams.has('id') && a.textContent!.trim().length < 350) candidates.add(a);
   });
+  // Semantic card hook observed in the current Steam workshop; inner class
+  // names are hashed. The live visibility filter excludes duplicate summaries.
+  doc.querySelectorAll('.OtherEvents_EventCtn').forEach(e => candidates.add(e));
+  doc.querySelectorAll<HTMLAnchorElement>('a[href*="/announcements/detail/"],a[href*="/news/app/"]').forEach(a => {
+    if (a.closest(OWN) || !originalText(a)) return;
+    try {
+      const link = new URL(a.href, doc.URL);
+      if (isSupportedSteamURL(link.href) && a.textContent!.trim().length < 15000) candidates.add(a);
+    } catch { /* malformed link */ }
+  });
+  if (doc.querySelector('.EventDetailsBody,.announcement_body')) {
+    // Headlines are plain divs in the live client. Match actual page metadata,
+    // avoiding a dependency on the current build's hashed title class.
+    const titles = new Set<string>();
+    for (const raw of [doc.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.content, doc.title]) {
+      const title = raw?.split(' :: ').pop()?.replace(/ - Steam News$/, '').trim();
+      if (title) {
+        titles.add(title);
+        const separator = title.indexOf(' - ');
+        if (separator >= 0) titles.add(title.slice(separator + 3));
+      }
+    }
+    if (titles.size) doc.querySelectorAll('h1,h2,h3,[role="heading"],div').forEach(e => {
+      if (!e.closest(OWN) && !e.childElementCount && titles.has(e.textContent?.trim() || '')) candidates.add(e);
+    });
+  }
   // Avoid translating both an anchor and its title container.
   return [...candidates].filter(e => {
     if (e.closest(OWN)) return false;
+    for (let current: Element | null = e; current; current = current.parentElement) {
+      const style = doc.defaultView?.getComputedStyle(current);
+      if (current.hasAttribute('hidden') || current.getAttribute('aria-hidden') === 'true' || style?.display === 'none' || style?.visibility === 'hidden') return false;
+    }
     for (let parent = e.parentElement; parent; parent = parent.parentElement)
       if (candidates.has(parent)) return false;
     return true;
@@ -150,7 +202,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   doc.head.append(style);
   const panel = doc.createElement('aside'); panel.id = 'swt-panel'; panel.dataset.swtOwned = '';
   panel.setAttribute('aria-label', '海京翻译工具');
-  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.2'; title.title = '按住可拖动面板'; panel.append(title);
+  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.3'; title.title = '按住可拖动面板'; panel.append(title);
   const fold = doc.createElement('button'); fold.textContent = '−'; fold.className = 'swt-fold'; fold.title = '收起 / 展开'; panel.append(fold);
   const content = doc.createElement('div'); content.className = 'swt-body'; panel.append(content);
 
@@ -166,10 +218,20 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
     dragged = true;
   };
   const place = () => {
-    if (dragged) return;
+    if (!panel.isConnected) return;
+    if (dragged) {
+      placeAt(parseFloat(panel.style.left) || 8, parseFloat(panel.style.top) || 8);
+      return;
+    }
     panel.style.left = ''; panel.style.top = ''; panel.style.right = ''; panel.style.bottom = '';
     const rect = panel.getBoundingClientRect() as Box;
-    const blockers = [...doc.querySelectorAll(PAGING)].map(el => el.getBoundingClientRect() as Box);
+    const controls = new Set<Element>(doc.querySelectorAll(PAGING));
+    doc.querySelectorAll('button,a[role="button"]').forEach(el => {
+      const b = el.getBoundingClientRect();
+      if (!el.closest(OWN) && el.querySelector('svg') && !(el.textContent || '').trim() && b.width <= 120 && b.height <= 120)
+        controls.add(el);
+    });
+    const blockers = [...controls].filter(el => !el.closest(OWN)).map(el => el.getBoundingClientRect() as Box);
     // If Steam renames those classes, hit-test the panel's lower edge instead: whatever clickable
     // control sits under it there is what the player cannot reach.
     if (!blockers.some(b => laidOut(b) && overlaps(rect, b))) {
@@ -177,7 +239,26 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
       if (under) blockers.push(under);
     }
     const lift = panelLift(rect, blockers, win.innerHeight || 0);
-    if (lift > 0) panel.style.bottom = `${PANEL_MARGIN + lift}px`;
+    if (lift > 0) {
+      const top = rect.top - lift;
+      if (top >= 8) panel.style.bottom = `${PANEL_MARGIN + lift}px`;
+      else {
+        // Lifting a tall panel can put its header outside the window. Try the
+        // other corner instead, keeping both the panel and controls reachable.
+        const width = panel.offsetWidth, height = panel.offsetHeight;
+        const candidates = [
+          { x: 8, y: Math.max(8, win.innerHeight - height - PANEL_MARGIN) },
+          { x: Math.max(8, win.innerWidth - width - 20), y: 8 },
+          { x: 8, y: 8 },
+        ];
+        const candidate = candidates.find(p => blockers.every(b => !laidOut(b) || !overlaps(
+          { left: p.x, right: p.x + width, top: p.y, bottom: p.y + height }, b)));
+        if (candidate) {
+          panel.style.left = `${candidate.x}px`; panel.style.top = `${candidate.y}px`;
+          panel.style.right = 'auto'; panel.style.bottom = 'auto';
+        }
+      }
+    }
   };
   const coveredControl = (rect: Box): Box | null => {
     if (typeof doc.elementFromPoint !== 'function') return null;
@@ -194,7 +275,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
     } catch { /* elementFromPoint unavailable */ } finally { panel.style.pointerEvents = previous; }
     return null;
   };
-  if (prefs.panel) placeAt(prefs.panel.x, prefs.panel.y);
+  if (prefs.panel && (!Number.isFinite(prefs.panel.x) || !Number.isFinite(prefs.panel.y))) delete prefs.panel;
   title.addEventListener('mousedown', event => {
     if (event.button !== 0) return;
     const rect = panel.getBoundingClientRect();
@@ -203,6 +284,8 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   });
   const onMove = (event: MouseEvent) => {
     if (!drag) return;
+    if (!drag.moved && Math.abs(event.clientX - drag.dx - panel.getBoundingClientRect().left) < 4 &&
+      Math.abs(event.clientY - drag.dy - panel.getBoundingClientRect().top) < 4) return;
     drag.moved = true;
     placeAt(event.clientX - drag.dx, event.clientY - drag.dy);
   };
@@ -318,6 +401,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   }
   content.append(help);
   doc.body.append(panel);
+  if (prefs.panel) placeAt(prefs.panel.x, prefs.panel.y);
   place();
   // Steam renders the paging controls after the items; re-check after layout settles and whenever
   // the page scrolls or the window resizes.
@@ -325,6 +409,9 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   const onReflow = () => { clearTimeout(reflow); reflow = setTimeout(place, 150); };
   win.addEventListener('resize', onReflow);
   win.addEventListener('scroll', onReflow, true);
+  const panelResize = typeof win.ResizeObserver === 'function' ? new win.ResizeObserver(onReflow) : undefined;
+  panelResize?.observe(panel);
+  help.addEventListener('toggle', onReflow);
 
   async function run() {
     if (disposed) return;
@@ -434,7 +521,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   observer.observe(doc.body, { subtree: true, childList: true, characterData: true });
   if (prefs.auto) void run();
   return () => {
-    disposed = true; epoch++; clearTimeout(timer); clearTimeout(reflow); observer.disconnect();
+    disposed = true; epoch++; clearTimeout(timer); clearTimeout(reflow); observer.disconnect(); panelResize?.disconnect();
     win.removeEventListener('resize', onReflow); win.removeEventListener('scroll', onReflow, true);
     win.removeEventListener('mousemove', onMove); win.removeEventListener('mouseup', onUp);
     records.forEach((r, el) => removeTranslation(el, r.node)); records.clear(); panel.remove(); style.remove();

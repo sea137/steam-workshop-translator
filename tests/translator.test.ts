@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test';
 import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
-import { collectTargets, isWorkshopURL, mountTranslator, originalText, panelLift, splitText } from '../webview/translator';
+import { collectTargets, isWorkshopURL, isSupportedSteamURL, mountTranslator, originalText, panelLift, splitText } from '../webview/translator';
 
 const page = (html = '<div class="workshopItemTitle">Field Tents</div>') => {
   const w = new Window({ url: 'https://steamcommunity.com/app/294100/workshop/' });
@@ -19,6 +19,58 @@ const click = (w: Window, label: string) => {
   expect(b).toBeDefined(); b.click();
 };
 const good = async (s: string) => JSON.stringify({ ok: true, text: `中文 ${s}` });
+
+test('news, announcements and change notes are supported without matching unrelated sites', () => {
+  for (const url of ['https://steamcommunity.com/app/294100/news/',
+    'https://steamcommunity.com/ogg/294100/announcements/detail/123',
+    'https://steamcommunity.com/games/rimworld/announcements/',
+    'https://store.steampowered.com/news/app/294100/view/123',
+    'https://steamcommunity.com/sharedfiles/filedetails/changelog/123']) expect(isSupportedSteamURL(url)).toBe(true);
+  for (const url of ['https://store.steampowered.com/app/294100/', 'https://steamcommunity.com/chat/',
+    'https://steamcommunity.com.evil.test/ogg/294100/announcements/detail/123',
+    'http://store.steampowered.com/news/app/294100/']) expect(isSupportedSteamURL(url)).toBe(false);
+});
+
+test('workshop news cards include their title and visible summary without duplicate hidden copies', () => {
+  const w = page('<a class="OtherEvents_EventCtn" href="https://steamcommunity.com/ogg/294100/announcements/detail/1">' +
+    '<div>Update 1.7</div><div>New performance improvements.</div><div hidden>New performance improvements.</div></a>');
+  const targets = collectTargets(w.document as any);
+  expect(targets).toHaveLength(1);
+  expect(originalText(targets[0])).toContain('Update 1.7');
+  expect(originalText(targets[0]).match(/New performance/g)).toHaveLength(1);
+});
+
+test('announcement detail selects its actual headline and body while preserving links', async () => {
+  const w = page(); w.location.href = 'https://steamcommunity.com/ogg/294100/announcements/detail/1';
+  w.document.title = 'Steam :: RimWorld :: New update';
+  w.document.body.innerHTML = '<div class="hashed-title">New update</div><div class="EventDetailsBody">New weapons.<br>Read <a href="https://example.com/">the details</a>.</div><div class="author">Author Name</div>';
+  const stop = mountTranslator(w.document as any, good, async () => true);
+  click(w, '翻译本页'); await tick();
+  expect(w.document.querySelectorAll('.swt-translation')).toHaveLength(2);
+  expect(w.document.querySelector('.EventDetailsBody a')!.getAttribute('href')).toBe('https://example.com/');
+  expect(w.document.querySelector('.author .swt-translation')).toBeNull();
+  click(w, '还原'); expect(w.document.querySelectorAll('.swt-translation')).toHaveLength(0); stop();
+});
+
+test('captured live Steam announcement selects the complete BBCode body', () => {
+  const html = readFileSync(new URL('./fixtures/announcement-detail.html', import.meta.url), 'utf8');
+  const w = page(html); w.location.href = 'https://steamcommunity.com/ogg/294100/announcements/detail/672882362547178634';
+  const targets = collectTargets(w.document as any);
+  const body = targets.find(e => e.classList.contains('EventDetailsBody'));
+  expect(body).toBeDefined();
+  expect(originalText(body!)).toContain('Performance improvements');
+  expect(originalText(body!)).toContain('Testing update 1.7');
+  expect(originalText(body!).length).toBeGreaterThan(3000);
+});
+
+test('Steam store news headline metadata is matched without translating navigation', () => {
+  const w = page('<div>RimWorld</div><div>New update</div><div class="EventDetailsBody">Full patch notes here.</div>');
+  w.location.href = 'https://store.steampowered.com/news/app/294100/view/123';
+  w.document.title = 'RimWorld - New update - Steam News';
+  const targets = collectTargets(w.document as any);
+  expect(targets.map(originalText)).toContain('New update');
+  expect(targets.map(originalText)).not.toContain('RimWorld');
+});
 
 test('native RPC timeout is explained in Chinese without exposing framework English', async () => {
   const w = page();
@@ -260,4 +312,41 @@ test('the panel can be dragged off the corner and stays where the player put it'
   expect(panel().style.left).toBe(''); expect(panel().style.top).toBe('');
   expect(w.localStorage.getItem('swt.preferences.v1')).not.toContain('"panel"');
   stop();
+});
+
+test('a dragged panel is clamped back inside a smaller Steam window', async () => {
+  const w = page();
+  w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ panel: { x: 950, y: 580 } }));
+  const stop = mountTranslator(w.document as any, good, async () => true);
+  const panel = w.document.querySelector('#swt-panel') as HTMLElement;
+  Object.defineProperty(panel, 'offsetWidth', { value: 292 });
+  Object.defineProperty(panel, 'offsetHeight', { value: 320 });
+  w.innerWidth = 760; w.innerHeight = 520;
+  w.dispatchEvent(new w.Event('resize'));
+  await new Promise(resolve => setTimeout(resolve, 180));
+  expect(parseFloat(panel.style.left) + 292).toBeLessThanOrEqual(760);
+  expect(parseFloat(panel.style.top) + 320).toBeLessThanOrEqual(520);
+  stop();
+});
+
+test('expanding help reclamps a saved panel after its height changes', async () => {
+  const w = page(); w.innerWidth = 760; w.innerHeight = 520;
+  w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ panel: { x: 300, y: 250 } }));
+  const stop = mountTranslator(w.document as any, good, async () => true);
+  const panel = w.document.querySelector('#swt-panel') as HTMLElement;
+  Object.defineProperty(panel, 'offsetHeight', { value: 400 });
+  const help = panel.querySelector('details')!;
+  help.dispatchEvent(new w.Event('toggle'));
+  await new Promise(resolve => setTimeout(resolve, 180));
+  expect(parseFloat(panel.style.top) + 400).toBeLessThanOrEqual(520);
+  stop();
+});
+
+test('click jitter on a title does not pin the panel position', () => {
+  const w = page(); const stop = mountTranslator(w.document as any, good, async () => true);
+  const handle = w.document.querySelector('#swt-panel strong')!;
+  handle.dispatchEvent(new w.MouseEvent('mousedown', { button: 0, clientX: 100, clientY: 100 }));
+  w.dispatchEvent(new w.MouseEvent('mousemove', { clientX: 101, clientY: 101 }));
+  w.dispatchEvent(new w.MouseEvent('mouseup'));
+  expect(w.localStorage.getItem('swt.preferences.v1')).not.toContain('"panel"'); stop();
 });

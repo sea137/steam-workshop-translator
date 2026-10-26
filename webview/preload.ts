@@ -1,4 +1,4 @@
-import { isWorkshopURL, mountTranslator } from './translator';
+import { isSupportedSteamURL, mountTranslator } from './translator';
 
 export default async function main() {
   if (window.top !== window) return;
@@ -10,7 +10,7 @@ export default async function main() {
     if (location.href === previous) return;
     previous = location.href;
     cleanup?.(); cleanup = undefined;
-    if (isWorkshopURL(location.href)) cleanup = mountTranslator(document,
+    if (isSupportedSteamURL(location.href)) cleanup = mountTranslator(document,
       text => backend.translateText(text), () => backend.clearTranslationCache(),
       (texts, provider) => backend.translateTexts(JSON.stringify({ texts, provider: provider || 'auto' })),
       { importDictionary: payload => backend.importDictionary(payload) });

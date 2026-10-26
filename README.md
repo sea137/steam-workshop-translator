@@ -1,16 +1,16 @@
 # 海京Tools · 海京翻译工具
 
-在 **Windows Steam 客户端**内翻译创意工坊标题、介绍和可选评论，保留原文并标明译文来源。当前版本 **0.3.2**。
+在 **Windows Steam 客户端**内翻译创意工坊标题、介绍、游戏新闻、活动公告正文、更新说明和可选评论，保留原文并标明译文来源。当前版本 **0.3.3**。
 
 **[下载最新版](https://github.com/sea137/steam-workshop-translator/releases/latest)** · [详细安装步骤](docs/INSTALL.md) · [离线模型与翻译源](docs/PROVIDERS.md) · [反馈问题](https://github.com/sea137/steam-workshop-translator/issues)
 
 ## 普通玩家下载哪个？
 
-推荐下载 **`HaijingTools-v0.3.2-Windows-WithModel.zip`（含模型完整包）**。
+推荐下载 **`HaijingTools-v0.3.3-Windows-WithModel.zip`（含模型完整包）**。
 
 - 包含插件、安装脚本、**英中离线模型**、内置词库及词库 JSON。模型约 67.5 MiB。
 - **不用单独下载“题库”或模型，不需要自行安装 Python。** 首次安装仍需联网下载 Millennium 框架（缺少时）和私有运行环境。
-- `HaijingTools-v0.3.2-Windows.zip` 是不带模型的轻量包，可在线翻译，也能通过离线安装脚本另行下载模型。
+- `HaijingTools-v0.3.3-Windows.zip` 是不带模型的轻量包，可在线翻译，也能通过离线安装脚本另行下载模型。
 - `Source code (zip)` 是开发源码，不是玩家安装包。
 
 ## 安装，照这几步操作
@@ -19,7 +19,7 @@
 2. 从 Steam 左上角菜单选择 **退出**，双击解压目录的 **Install.cmd**。脚本自动识别 Steam 目录；缺少 Millennium 时会从官方下载并校验后安装。
 3. 双击 **安装离线翻译.cmd**，等到提示安装完成。它自动使用完整包里的模型，配置私有运行环境，并启动本地服务。
 4. 启动 Steam，在 **Steam → Millennium → Plugins** 中启用 **海京Tools**。
-5. 打开工坊，在右下角 **海京翻译工具 · 0.3.2** 选择 **本地模型（首选推荐）**，点击 **翻译本页**。
+5. 打开工坊，在右下角 **海京翻译工具 · 0.3.3** 选择 **本地模型（首选推荐）**，点击 **翻译本页**。
 
 以后重启电脑，先运行 **启动离线翻译.cmd** 再使用本地模型；**停止离线翻译.cmd** 可释放模型占用。离线服务不会自动随 Windows 开机启动。
 
@@ -76,3 +76,11 @@ pwsh -File scripts/Pack-Release.ps1 -ModelPath out/translate-en_zh-1_9.argosmode
 实际 `.star` 包在 Lua 和 LuaJIT 中验证来源切换、缓存、词库、限流及慢请求预算；页面有交互回归。真实离线模型已验证断网整句/段落/长文本推理。测试环境和客户端页面验收是不同证据，用户实际使用效果以 Steam 为准。
 
 海京维护，开发中使用 Codex 辅助。插件源码与起步词库采用 [MIT](LICENSE)；模型为 Argos 打包的 OPUS-MT en→zh 1.9，原始模型 CC BY 4.0，作者 Jörg Tiedemann、Santhosh Thottingal。CTranslate2、SentencePiece、uv 等许可与署名见 [第三方说明](docs/PROVIDERS.md)。
+
+## 0.3.3 修复与新闻支持
+
+工坊中的近期公告卡片、社区新闻/活动详情、商店游戏新闻页和模组更新说明页面均可使用翻译面板。新闻正文保留原文和链接，译文附在下方；还原按钮可移除译文。隐藏的移动端/桌面端重复摘要不会重复翻译。
+
+修复拖动后缩小窗口或展开帮助导致面板越界的问题，补充新版 SVG 翻页箭头避让；支持拖动、收起和位置复位。
+
+真实 Steam 公告的 3213 字符正文已通过本地模型整篇翻译、8 个链接保留与还原验证。历史 Lua VM AV 报告已保留，本轮独立原生 VM 和客户端复测未复现该历史崩溃，不宣称其根因已排除。

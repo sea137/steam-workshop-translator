@@ -4,7 +4,7 @@ require("translator")
 
 return {
     on_load = function()
-        logger:info("HaijingTools 0.3.1 ready")
+        logger:info("HaijingTools 0.3.3 ready")
         millennium.ready()
     end,
     on_unload = function() end
