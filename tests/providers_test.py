@@ -45,6 +45,8 @@ def fixture():
         assert url.startswith('http://127.0.0.1:17653/'), url
         assert options['proxy'] == ''
         assert options['method'] == 'POST' and options['headers']['Content-Type'] == 'application/json'
+        if state.get('local_response') is not None: return to_lua(state['local_response'])
+        if state.get('local_error'): return None, state['local_error']
         if not state['local']: return None
         texts = json.loads(body)['texts']
         return to_lua({'status': 200, 'body': json.dumps({'ok': True, 'items': [{'ok': True, 'text': '本地译文'} for _ in texts]})})
@@ -137,3 +139,18 @@ with temp:
     assert result['items'][0]['provider'] == 'offline'
     assert len(state['calls']) == 1 and state['calls'][0][0].startswith('http://127.0.0.1')
 print('PASS: auto prefers the local model without contacting online services when it succeeds')
+
+for response, transport, expected in [
+    (None, 'Operation timed out after 8000 milliseconds', '超时'),
+    (None, 'Failed to connect to 127.0.0.1 port 17653', '启动离线翻译'),
+    ({'status': 503, 'body': '{"ok":false,"code":"busy"}'}, None, '繁忙'),
+    ({'status': 503, 'body': '{"ok":false,"code":"inference_failed"}'}, None, '推理失败'),
+    ({'status': 200, 'body': '{malformed'}, None, '格式异常'),
+]:
+    temp, lua, state, batch = fixture()
+    with temp:
+        state['local_response'], state['local_error'] = response, transport
+        error = batch(['Check accurate local error'], 'offline')['items'][0]['error']
+        assert expected in error, (expected, error)
+        assert '安装离线翻译.cmd' not in error, 'Transport/server failures do not prove that a model needs reinstalling'
+print('PASS: offline timeout, disconnected service, busy, inference failure and malformed response have distinct Chinese guidance')

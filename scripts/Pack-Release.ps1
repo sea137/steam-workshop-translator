@@ -10,7 +10,7 @@ if (-not (Test-Path -LiteralPath $compiled)) { throw 'Run bun run build first.' 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $staging = Join-Path $OutputDirectory ('staging-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $staging | Out-Null
-$files = @('workshop-translator.star','Install.cmd','Install.ps1','Uninstall.cmd','Uninstall.ps1','README.md','LICENSE','CHANGELOG.md','安装离线翻译.cmd','启动离线翻译.cmd','停止离线翻译.cmd','dictionary-example.json','dictionary-starter.json')
+$files = @('workshop-translator.star','Install.cmd','Install.ps1','Uninstall.cmd','Uninstall.ps1','Disable-Plugin.ps1','停用海京Tools.cmd','恢复海京Tools.cmd','README.md','LICENSE','CHANGELOG.md','安装离线翻译.cmd','启动离线翻译.cmd','停止离线翻译.cmd','dictionary-example.json','dictionary-starter.json')
 foreach ($name in $files) { Copy-Item -LiteralPath (Join-Path $projectRoot $name) -Destination $staging }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs') -Destination $staging -Recurse
 $offlineStaging = Join-Path $staging 'offline'

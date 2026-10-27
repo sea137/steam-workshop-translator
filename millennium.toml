@@ -1,7 +1,7 @@
 [plugin]
 id = "local.workshop.translator"
 name = "海京Tools"
-version = "0.3.4"
+version = "0.3.5"
 author = "MR.Sea & Codex"
 description = "海京Tools 功能集：海京翻译工具，在 Steam 创意工坊显示简体中文译文。"
 

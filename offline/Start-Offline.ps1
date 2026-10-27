@@ -15,10 +15,27 @@ function Get-LocalHealth {
 }
 try {
     $health = Get-LocalHealth
-    if ($health.service -eq 'HaijingToolsOffline') { Write-Host '离线翻译已经运行。'; exit 0 }
+    if ($health.service -eq 'HaijingToolsOffline') {
+        if ($health.version -lt 2) { Write-Host '离线服务是旧版。升级后请先运行「停止离线翻译.cmd」，再运行本启动脚本更新服务。' -ForegroundColor Yellow }
+        else { Write-Host '离线翻译已经运行。' }
+        exit 0
+    }
     if ($health) { throw '端口被其他程序占用。' }
     if (-not (Test-Path -LiteralPath $pythonExe) -or -not (Test-Path -LiteralPath (Join-Path $modelRoot 'model\model.bin'))) {
         throw '请先运行「安装离线翻译.cmd」。'
+    }
+    if (Get-NetTCPConnection -State Listen -LocalPort 17653 -ErrorAction SilentlyContinue) {
+        throw '17653 端口仍被占用，但健康检查失败。服务可能繁忙或异常；请先运行「停止离线翻译.cmd」再启动，勿重复启动多个进程。'
+    }
+    $serverSource = Join-Path $PSScriptRoot 'server.py'
+    if ([IO.Path]::GetFullPath($serverSource) -ne [IO.Path]::GetFullPath($serverFile)) {
+        Copy-Item -LiteralPath $serverSource -Destination $serverFile -Force
+    }
+    foreach ($logName in @('server-error.log','server.log')) {
+        $logPath = Join-Path $offlineRoot $logName
+        if (Test-Path -LiteralPath $logPath) {
+            Copy-Item -LiteralPath $logPath -Destination ($logPath + '.' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.bak')
+        }
     }
     $proc = Start-Process -FilePath $pythonExe -ArgumentList @(('"' + $serverFile + '"'), '--model', ('"' + $modelRoot + '"')) -WindowStyle Hidden -PassThru -RedirectStandardError (Join-Path $offlineRoot 'server-error.log') -RedirectStandardOutput (Join-Path $offlineRoot 'server.log')
     [IO.File]::WriteAllText((Join-Path $offlineRoot 'server.pid'), [string]$proc.Id)

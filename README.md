@@ -1,16 +1,16 @@
 # 海京Tools · 海京翻译工具
 
-在 **Windows Steam 客户端**内翻译创意工坊标题、介绍、游戏新闻、活动公告正文、更新说明和可选评论，保留原文并标明译文来源。当前版本 **0.3.4**。
+在 **Windows Steam 客户端**内翻译创意工坊标题、介绍、游戏新闻、活动公告正文、更新说明和可选评论，保留原文并标明译文来源。当前版本 **0.3.5**。
 
 **[下载最新版](https://github.com/sea137/steam-workshop-translator/releases/latest)** · [详细安装步骤](docs/INSTALL.md) · [离线模型与翻译源](docs/PROVIDERS.md) · [反馈问题](https://github.com/sea137/steam-workshop-translator/issues)
 
 ## 普通玩家下载哪个？
 
-推荐下载 **`HaijingTools-v0.3.4-Windows-WithModel.zip`（含模型完整包）**。
+推荐下载 **`HaijingTools-v0.3.5-Windows-WithModel.zip`（含模型完整包）**。
 
 - 包含插件、安装脚本、**英中离线模型**、内置词库及词库 JSON。模型约 67.5 MiB。
 - **不用单独下载“题库”或模型，不需要自行安装 Python。** 首次安装仍需联网下载 Millennium 框架（缺少时）和私有运行环境。
-- `HaijingTools-v0.3.4-Windows.zip` 是不带模型的轻量包，可在线翻译，也能通过离线安装脚本另行下载模型。
+- `HaijingTools-v0.3.5-Windows.zip` 是不带模型的轻量包，可在线翻译，也能通过离线安装脚本另行下载模型。
 - `Source code (zip)` 是开发源码，不是玩家安装包。
 
 ## 安装，照这几步操作
@@ -19,7 +19,7 @@
 2. 从 Steam 左上角菜单选择 **退出**，双击解压目录的 **Install.cmd**。脚本自动识别 Steam 目录；缺少 Millennium 时会从官方下载并校验后安装。
 3. 双击 **安装离线翻译.cmd**，等到提示安装完成。它自动使用完整包里的模型，配置私有运行环境，并启动本地服务。
 4. 启动 Steam，在 **Steam → Millennium → Plugins** 中启用 **海京Tools**。
-5. 打开工坊或游戏库里的更新公告，在右下角 **海京翻译工具 · 0.3.4** 选择 **本地模型（首选推荐）**，点击 **翻译本页**。
+5. 打开工坊或游戏库里的更新公告，在右下角 **海京翻译工具 · 0.3.5** 选择 **本地模型（首选推荐）**，点击 **翻译本页**。
 
 以后重启电脑，先运行 **启动离线翻译.cmd** 再使用本地模型；**停止离线翻译.cmd** 可释放模型占用。离线服务不会自动随 Windows 开机启动。
 
@@ -51,6 +51,12 @@
 
 离线模型装在 `%LOCALAPPDATA%\HaijingTools\offline`。自定义词库保存在 `<Steam>\millennium\config\haijing-dictionary.json`，译文缓存在同目录的 `workshop-translator-cache.json`。只保存本机文件。
 
+## 连续翻译失败 / Steam 无法启动
+
+已装模型但提示离线失败，先运行「启动离线翻译.cmd」，无需重新下载模型。升级服务时先运行**新版包里的**「停止离线翻译.cmd」，再启动。遇到繁忙或超时先等待，避免连续重试或清缓存。
+
+安装后 Steam 无法启动：完全退出 Steam 后，运行「停用海京Tools.cmd」进行插件隔离；「恢复海京Tools.cmd」可撤销。仍无法打开时，再参考 [启动排障](docs/TROUBLESHOOTING.md) 检查 Millennium 框架。仅凭“进不去”无法判断是插件、框架还是联网问题。
+
 ## 隐私与错误提示
 
 本地模型和词库模式不调用在线翻译服务。Google/MyMemory 模式会向对应服务发送选中的工坊文字；自动切换可能尝试多个服务。代码不读取 Steam 密码、Cookie、私信或游戏文件。
@@ -79,7 +85,7 @@ pwsh -File scripts/Pack-Release.ps1 -ModelPath out/translate-en_zh-1_9.argosmode
 
 海京维护，开发中使用 Codex 辅助。插件源码与起步词库采用 [MIT](LICENSE)；模型为 Argos 打包的 OPUS-MT en→zh 1.9，原始模型 CC BY 4.0，作者 Jörg Tiedemann、Santhosh Thottingal。CTranslate2、SentencePiece、uv 等许可与署名见 [第三方说明](docs/PROVIDERS.md)。
 
-## 0.3.4 修复与新闻支持
+## 0.3.5 修复与新闻支持
 
 工坊中的近期公告卡片、社区新闻/活动详情、商店游戏新闻页和模组更新说明页面均可使用翻译面板。新闻正文保留原文和链接，译文附在下方；还原按钮可移除译文。隐藏的移动端/桌面端重复摘要不会重复翻译。
 

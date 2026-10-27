@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -51,14 +52,19 @@ def make_server(translator, port=17653):
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Cache-Control', 'no-store')
-            self.end_headers(); self.wfile.write(body)
+            try:
+                self.end_headers(); self.wfile.write(body)
+            except (ConnectionError, OSError):
+                # A timed-out Steam caller may close the socket during inference.
+                # Do not turn a successful translation into a second error reply.
+                self.close_connection = True
         def trusted(self):
             return not self.headers.get('Origin') and self.headers.get('Host') in (
                 f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}')
         def do_GET(self):
             if not self.trusted(): return self.send_json(403, {'ok': False})
             if self.path != '/health': return self.send_json(404, {'ok': False})
-            self.send_json(200, {'ok': True, 'service': 'HaijingToolsOffline', 'version': 1, 'model': 'Argos en_zh 1.9'})
+            self.send_json(200, {'ok': True, 'service': 'HaijingToolsOffline', 'version': 2, 'model': 'Argos en_zh 1.9'})
         def do_POST(self):
             if not self.trusted(): return self.send_json(403, {'ok': False})
             if self.path != '/translate': return self.send_json(404, {'ok': False})
@@ -71,17 +77,29 @@ def make_server(translator, port=17653):
                 if not isinstance(texts, list) or not 1 <= len(texts) <= 8 or any(
                     not isinstance(s, str) or not s or len(s.encode('utf-8')) > 7000 for s in texts):
                     return self.send_json(400, {'ok': False})
-                rendered = translator.translate(texts)
+                if not self.server.inference_slot.acquire(blocking=False):
+                    return self.send_json(503, {'ok': False, 'code': 'busy'})
+                try:
+                    rendered = translator.translate(texts)
+                finally: self.server.inference_slot.release()
                 self.send_json(200, {'ok': True, 'items': [{'ok': True, 'text': s} for s in rendered]})
             except (ValueError, UnicodeError): self.send_json(400, {'ok': False})
-            except Exception: self.send_json(503, {'ok': False, 'error': 'Local model failed; see installation instructions.'})
+            except Exception as exc:
+                print('Local inference failed: ' + type(exc).__name__, file=sys.stderr, flush=True)
+                self.send_json(503, {'ok': False, 'code': 'inference_failed'})
     class Server(ThreadingHTTPServer):
         daemon_threads = True
         # Reject additional local requests rather than unbounded queued work.
         request_queue_size = 4
-        slots = threading.BoundedSemaphore(2)
+        # Reserve HTTP capacity for health checks while the one CPU model is busy.
+        slots = threading.BoundedSemaphore(8)
+        inference_slot = threading.BoundedSemaphore(1)
         def process_request(self, request, address):
             if not self.slots.acquire(blocking=False):
+                body = b'{"ok":false,"code":"busy"}'
+                try:
+                    request.sendall(b'HTTP/1.0 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: ' + str(len(body)).encode() + b'\r\nConnection: close\r\n\r\n' + body)
+                except OSError: pass
                 self.shutdown_request(request); return
             try: super().process_request(request, address)
             except Exception:

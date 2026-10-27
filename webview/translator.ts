@@ -276,7 +276,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   doc.head.append(style);
   const panel = doc.createElement('aside'); panel.id = 'swt-panel'; panel.dataset.swtOwned = '';
   panel.setAttribute('aria-label', '海京翻译工具');
-  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.4'; title.title = '按住可拖动面板'; panel.append(title);
+  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.5'; title.title = '按住可拖动面板'; panel.append(title);
   const fold = doc.createElement('button'); fold.textContent = '−'; fold.className = 'swt-fold'; fold.title = '收起 / 展开'; panel.append(fold);
   const content = doc.createElement('div'); content.className = 'swt-body'; panel.append(content);
 
