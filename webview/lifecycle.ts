@@ -5,6 +5,7 @@ type Services = {
   clearCache: () => Promise<unknown>;
   translateBatch: TranslateBatch;
   importDictionary: (payload: string) => Promise<unknown>;
+  prepareOffline?: () => Promise<unknown>;
 };
 
 /** The library opens news in-place, without a URL change or a WebKit navigation. */
@@ -22,7 +23,7 @@ export function watchSteamDocument(doc: Document, services: Services) {
     }
     previous = doc.URL;
     if (supported && !cleanup) cleanup = mountTranslator(doc, services.translate, services.clearCache,
-      services.translateBatch, { importDictionary: services.importDictionary });
+      services.translateBatch, { importDictionary: services.importDictionary, prepareOffline: services.prepareOffline });
   };
   const observer = new win.MutationObserver(changes => {
     if (changes.every(c => (c.target as Element).closest?.('[data-swt-owned]'))) return;

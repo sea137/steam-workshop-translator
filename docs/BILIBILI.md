@@ -76,7 +76,7 @@
 
 下载放这里：https://github.com/sea137/steam-workshop-translator/releases/latest
 
-请下载 **Assets 里的 HaijingTools-v0.3.5-Windows-WithModel.zip**，普通用户不用下载 Source code。解压后退出 Steam，运行 Install.cmd；重新打开 Steam，到 Millennium → Plugins 启用「海京Tools」。工坊右下角的功能面板叫「海京翻译工具」。
+请下载 **Assets 里的 HaijingTools-v0.3.6-Windows-WithModel.zip**，普通用户不用下载 Source code。解压后退出 Steam，运行 Install.cmd；重新打开 Steam，到 Millennium → Plugins 启用「海京Tools」。工坊右下角的功能面板叫「海京翻译工具」。
 
 连接失败先检查当前网络能否访问 Google。反馈请带上插件版本、公开工坊链接和错误截图，注意遮住账号信息。
 
@@ -99,4 +99,4 @@ Google 用不了也能切换：翻译源里选「自动切换」或「MyMemory�
 
 ## 0.3.1 玩家补充
 
-首选推荐本地模型，自动模式也优先本地。推荐下载 WithModel 完整包，里面已经有离线模型和词库，不用另找“题库”。完整解压后依次运行 Install.cmd、安装离线翻译.cmd；首次仍需联网下载运行环境。下次重启电脑后运行启动离线翻译.cmd。
+首选推荐本地模型，自动模式也优先本地。推荐下载 WithModel 完整包，里面已经有离线模型和词库，不用另找“题库”。完整解压后依次运行 Install.cmd、安装离线翻译.cmd；首次仍需联网下载运行环境。0.3.6 起，点击本地翻译会自动检查并启动服务；升级要运行新版 Install.cmd，已有模型无需重新下载。

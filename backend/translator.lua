@@ -176,3 +176,9 @@ function clearTranslationCache()
     save_cache()
     return true
 end
+
+---@ffi
+---@return string
+function prepareOffline()
+    return json.encode(require("offline_runtime").prepare())
+end

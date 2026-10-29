@@ -13,6 +13,7 @@ export default definePlugin(() => {
         translate: text => backend.translateText(text), clearCache: () => backend.clearTranslationCache(),
         translateBatch: (texts, provider) => backend.translateTexts(JSON.stringify({ texts, provider: provider || 'auto' })),
         importDictionary: payload => backend.importDictionary(payload),
+        prepareOffline: () => backend.prepareOffline(),
       }));
     }
     documents.forEach((stop, doc) => { if (!current.has(doc)) { stop(); documents.delete(doc); } });
@@ -30,7 +31,7 @@ export default definePlugin(() => {
       <Field label="中英对照" description="新闻译文按标题、段落和列表项显示在对应原文下方。图片、作者名称、订阅按钮和链接保持原样。" />
       <Field label="自动翻译" description="在工坊右下角开启「自动」，后续访问和新加载的内容会自动翻译。评论需要另外勾选。" />
       <Field label="翻译源推荐" description="首选推荐本地模型（英语到简中），自动切换也优先本地；Google 适合多语种备用，MyMemory 是限额备用源，本地词库用于词条应急匹配。结果标明来源。" />
-      <Field label="离线使用" description="安装包附带「安装离线翻译.cmd」，自动安装私有运行环境和约 67 MB 的英中模型；以后运行「启动离线翻译.cmd」。词库也可导入 JSON，词库只匹配完整词条。" />
+      <Field label="离线使用" description="首次运行「安装离线翻译.cmd」安装私有环境与英中模型；以后点击本地翻译会自动检查并启动服务。升级运行新版 Install.cmd 更新辅助文件，已有模型保留。" />
       <Field label="联网与缓存" description="在线模式将所选工坊文字发送给对应服务，自动模式可能发送给 Google 和 MyMemory。本地模型和词库模式不调用在线服务。译文按来源分开缓存在本机。" />
     </>,
   };

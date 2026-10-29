@@ -8,5 +8,6 @@ export default async function main() {
     translate: text => backend.translateText(text), clearCache: () => backend.clearTranslationCache(),
     translateBatch: (texts, provider) => backend.translateTexts(JSON.stringify({ texts, provider: provider || 'auto' })),
     importDictionary: payload => backend.importDictionary(payload),
+    prepareOffline: () => backend.prepareOffline(),
   });
 }

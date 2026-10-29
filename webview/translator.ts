@@ -1,7 +1,7 @@
 // Millennium may decode a backend JSON string before passing it to WebKit.
 export type Translate = (text: string) => Promise<unknown>;
 export type TranslateBatch = (texts: string[], provider?: string) => Promise<unknown>;
-type Tools = { importDictionary: (payload: string) => Promise<unknown> };
+type Tools = { importDictionary: (payload: string) => Promise<unknown>; prepareOffline?: () => Promise<unknown> };
 const SOURCES: Record<string, string> = { offline: '本地模型', auto: '自动切换', google: 'Google', mymemory: 'MyMemory', dictionary: '本地词库' };
 const OWN = '[data-swt-owned]';
 const PREFS = 'swt.preferences.v1';
@@ -276,7 +276,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   doc.head.append(style);
   const panel = doc.createElement('aside'); panel.id = 'swt-panel'; panel.dataset.swtOwned = '';
   panel.setAttribute('aria-label', '海京翻译工具');
-  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.5'; title.title = '按住可拖动面板'; panel.append(title);
+  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.6'; title.title = '按住可拖动面板'; panel.append(title);
   const fold = doc.createElement('button'); fold.textContent = '−'; fold.className = 'swt-fold'; fold.title = '收起 / 展开'; panel.append(fold);
   const content = doc.createElement('div'); content.className = 'swt-body'; panel.append(content);
 
@@ -436,7 +436,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
     note.textContent = prefs.provider === 'auto' ? '推荐先用本地模型。自动模式先尝试本地模型，失败后依次尝试 Google、MyMemory、词库；在线阶段会发送所选文字。MyMemory 匿名额度约 5000 字符/天。'
       : prefs.provider === 'google' ? '所选文字发送给 Google。接口可能限流；图片文字暂不支持。'
       : prefs.provider === 'mymemory' ? '所选文字发送给 MyMemory；仅英语 → 简中。匿名额度约 5000 字符/天。'
-      : prefs.provider === 'offline' ? '仅使用本机模型和该来源缓存，不发送给在线翻译服务。需要先下载并启动离线模型。'
+      : prefs.provider === 'offline' ? '仅使用本机模型和该来源缓存，不发送给在线翻译服务。已安装离线环境时，点击翻译会自动检查并启动服务。'
       : '仅在本机匹配完整词条，不调用在线服务；未命中的整句不会被冒充为译文。';
   };
   updateNote();
@@ -448,7 +448,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   };
   const help = doc.createElement('details'), summary = doc.createElement('summary'); summary.textContent = '离线模型 / 导入词库'; help.append(summary);
   const instructions = doc.createElement('small');
-  instructions.textContent = '整句离线翻译：打开安装包，运行「安装离线翻译.cmd」下载模型及运行环境；以后运行「启动离线翻译.cmd」。准备好后选择「本地模型」。无需自己安装 Python。';
+  instructions.textContent = '首次运行「安装离线翻译.cmd」配置模型和运行环境。以后点击本地翻译即可自动检查并启动服务。旧用户升级请运行新版 Install.cmd 更新辅助文件；手动排障仍可运行「启动离线翻译.cmd」。';
   help.append(instructions);
   const dictionaryHelp = doc.createElement('small'); dictionaryHelp.textContent = '词库示例：{"Field Tents":"野外帐篷"}。导入会替换自定义词库；内置词条保留。最大 2 MB / 10000 条。'; help.append(dictionaryHelp);
   const resetPosition = doc.createElement('button'); resetPosition.className = 'swt-reset'; resetPosition.textContent = '面板位置复位';
@@ -538,6 +538,24 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
       };
       renderReady();
       const jobs = [...pending];
+      if (jobs.length && tools?.prepareOffline && (prefs.provider === 'offline' || prefs.provider === 'auto')) {
+        for (let attempt = 0; attempt < 30; attempt++) {
+          if (disposed || generation !== epoch) return;
+          status.classList.remove('swt-error'); status.textContent = '正在检查并启动本地翻译服务，保留已安装的模型…';
+          const state = responseObject(await tools.prepareOffline());
+          if (disposed || generation !== epoch) return;
+          if (state.state === 'ready') break;
+          if (state.state === 'missing') {
+            if (prefs.provider === 'auto') break;
+            throw new Error('尚未安装完整的离线环境，请运行「安装离线翻译.cmd」。已有模型会保留。');
+          }
+          if (state.state !== 'starting' || attempt === 29) {
+            if (prefs.provider === 'auto') break;
+            throw new Error('本地服务未能自动启动。请运行「启动离线翻译.cmd」，并查看离线目录的 on-demand-error.log 和 server-error.log；无需重新下载已有模型。');
+          }
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
       for (let index = 0; index < jobs.length;) {
         if (disposed || generation !== epoch) break;
         const group: string[] = []; let encoded = 0;

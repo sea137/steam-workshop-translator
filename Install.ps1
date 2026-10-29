@@ -34,13 +34,19 @@ try {
             Write-Host 'Millennium 3.6.2 已安装。' -ForegroundColor Green
         }
     }
-    if ($PSCmdlet.ShouldProcess($pluginTarget, '安装海京Tools 0.3.5')) {
+    if ($PSCmdlet.ShouldProcess($pluginTarget, '安装海京Tools 0.3.6')) {
         New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
         if (Test-Path -LiteralPath $pluginTarget) {
             Copy-Item -LiteralPath $pluginTarget -Destination ($pluginTarget + '.' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.bak')
         }
         Copy-Item -LiteralPath $pluginSource -Destination $pluginTarget -Force
         if ((Get-FileHash -LiteralPath $pluginSource).Hash -ne (Get-FileHash -LiteralPath $pluginTarget).Hash) { throw '插件复制后校验失败。' }
+        $offlineRoot = Join-Path $env:LOCALAPPDATA 'HaijingTools\offline'
+        if (Test-Path -LiteralPath (Join-Path $offlineRoot 'models\translate-en_zh-1_9\model\model.bin')) {
+            foreach ($name in @('Start-Offline.ps1','Start-OnDemand.ps1','Stop-Offline.ps1','server.py','start_service.py')) {
+                Copy-Item -LiteralPath (Join-Path (Join-Path $PSScriptRoot 'offline') $name) -Destination (Join-Path $offlineRoot $name) -Force
+            }
+        }
         Write-Host ('插件已安装到：' + $pluginTarget) -ForegroundColor Green
         Write-Host '下一步：启动 Steam → 左上角 Steam → Millennium → Plugins → 启用「海京Tools」。'
         Write-Host '打开创意工坊，在右下角点击「翻译本页」。'

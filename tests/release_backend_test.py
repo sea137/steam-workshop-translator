@@ -77,3 +77,4 @@ if __name__ == '__main__':
             print('Checking packed backend in ' + ('LuaJIT 2.1' if luajit else 'Lua default'))
             runpy.run_path(str(Path(__file__).with_name('backend_test.py')), run_name='__main__')
             runpy.run_path(str(Path(__file__).with_name('providers_test.py')), run_name='__main__')
+            runpy.run_path(str(Path(__file__).with_name('offline_runtime_test.py')), run_name='__main__')

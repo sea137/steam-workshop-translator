@@ -21,6 +21,49 @@ const click = (w: Window, label: string) => {
 };
 const good = async (s: string) => JSON.stringify({ ok: true, text: `中文 ${s}` });
 
+test('offline translation starts an installed service and waits for readiness', async () => {
+  const w = page(); w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ provider: 'offline' }));
+  let checks = 0, ready = false;
+  const stop = mountTranslator(w.document as any, good, async () => true, async texts => {
+    expect(ready).toBe(true);
+    return { ok: true, items: texts.map(() => ({ ok: true, text: '野外帐篷', provider: 'offline' })) };
+  }, { importDictionary: async () => true, prepareOffline: async () => {
+    if (++checks < 2) return { ok: true, state: 'starting' };
+    ready = true; return { ok: true, state: 'ready' };
+  } } as any);
+  click(w, '翻译本页'); await waitFor(() => !!w.document.querySelector('.swt-translation'));
+  expect(checks).toBe(2); stop();
+});
+
+test('missing offline installation gives guidance and never translates online in strict local mode', async () => {
+  const w = page(); w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ provider: 'offline' }));
+  let translated = false;
+  const stop = mountTranslator(w.document as any, good, async () => true, async () => {
+    translated = true; return { ok: true, items: [{ ok: true, text: 'unexpected' }] };
+  }, { importDictionary: async () => true, prepareOffline: async () => ({ ok: true, state: 'missing' }) } as any);
+  click(w, '翻译本页'); await tick();
+  expect(translated).toBe(false); expect(w.document.querySelector('[role=status]')!.textContent).toContain('安装离线翻译'); stop();
+});
+
+test('restoring while offline service starts cancels translation without late results', async () => {
+  const w = page(); w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ provider: 'offline' }));
+  let release!: (value: unknown) => void; let translated = false;
+  const stop = mountTranslator(w.document as any, good, async () => true, async () => { translated = true; return {}; },
+    { importDictionary: async () => true, prepareOffline: () => new Promise(resolve => release = resolve) });
+  click(w, '翻译本页'); click(w, '还原'); release({ ok: true, state: 'ready' }); await tick();
+  expect(translated).toBe(false); expect(w.document.querySelector('.swt-translation')).toBeNull(); stop();
+});
+
+test('choosing Google does not start a local model', async () => {
+  const w = page(); w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ provider: 'google' }));
+  let checked = false;
+  const stop = mountTranslator(w.document as any, good, async () => true,
+    async () => ({ ok: true, items: [{ ok: true, text: '在线结果', provider: 'google' }] }),
+    { importDictionary: async () => true, prepareOffline: async () => { checked = true; return {}; } });
+  click(w, '翻译本页'); await tick(); expect(checked).toBe(false);
+  expect(w.document.querySelector('.swt-translation')!.textContent).toBe('在线结果'); stop();
+});
+
 test('library update popup is eligible even though the client URL stays unchanged', () => {
   const w = new Window({ url: 'https://steamloopback.host/index.html' });
   expect(isSupportedSteamDocument(w.document as any)).toBe(false);

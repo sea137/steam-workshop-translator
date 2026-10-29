@@ -13,7 +13,11 @@ function Get-LocalHealth {
     catch { return $null }
     finally { $client.Dispose(); $handler.Dispose() }
 }
+$startupMutex = [Threading.Mutex]::new($false, 'Local\HaijingTools.OfflineStart')
+$startupLock = $false
 try {
+    try { $startupLock = $startupMutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $startupLock = $true }
+    if (-not $startupLock) { Write-Host '离线翻译已经在启动中。'; exit 0 }
     $health = Get-LocalHealth
     if ($health.service -eq 'HaijingToolsOffline') {
         if ($health.version -lt 2) { Write-Host '离线服务是旧版。升级后请先运行「停止离线翻译.cmd」，再运行本启动脚本更新服务。' -ForegroundColor Yellow }
@@ -30,6 +34,9 @@ try {
     $serverSource = Join-Path $PSScriptRoot 'server.py'
     if ([IO.Path]::GetFullPath($serverSource) -ne [IO.Path]::GetFullPath($serverFile)) {
         Copy-Item -LiteralPath $serverSource -Destination $serverFile -Force
+        foreach ($name in @('Start-OnDemand.ps1','start_service.py','Stop-Offline.ps1')) {
+            Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $offlineRoot $name) -Force
+        }
     }
     foreach ($logName in @('server-error.log','server.log')) {
         $logPath = Join-Path $offlineRoot $logName
@@ -45,7 +52,7 @@ try {
             $health = Get-LocalHealth
             if ($health.service -eq 'HaijingToolsOffline') {
                 Write-Host '离线翻译已启动。回到 Steam，在「翻译源」选择「本地模型」。' -ForegroundColor Green
-                Write-Host '此后翻译不联网。重启电脑后需要再次运行「启动离线翻译.cmd」。'
+                Write-Host '此后推理不联网。0.3.6 起点击本地翻译会自动检查服务；此脚本也可手动排障。'
                 exit 0
             }
         } catch { }
@@ -53,3 +60,4 @@ try {
     }
     throw '启动超时，请检查本机 17653 端口及运行环境。'
 } catch { Write-Error $_; exit 1 }
+finally { if ($startupLock) { $startupMutex.ReleaseMutex() }; $startupMutex.Dispose() }

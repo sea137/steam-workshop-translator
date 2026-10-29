@@ -70,6 +70,9 @@ try {
     Expand-Archive -LiteralPath $zipFile -DestinationPath (Join-Path $offlineRoot 'models') -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'server.py') -Destination (Join-Path $offlineRoot 'server.py') -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Start-Offline.ps1') -Destination (Join-Path $offlineRoot 'Start-Offline.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Start-OnDemand.ps1') -Destination (Join-Path $offlineRoot 'Start-OnDemand.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'start_service.py') -Destination (Join-Path $offlineRoot 'start_service.py') -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Stop-Offline.ps1') -Destination (Join-Path $offlineRoot 'Stop-Offline.ps1') -Force
     Write-Host '离线翻译安装完成。' -ForegroundColor Green
     & (Join-Path $PSScriptRoot 'Start-Offline.ps1')
     if ($LASTEXITCODE -ne 0) { throw '安装完成，但服务尚未启动。请运行「启动离线翻译.cmd」。' }
