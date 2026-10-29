@@ -279,7 +279,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   doc.head.append(style);
   const panel = doc.createElement('aside'); panel.id = 'swt-panel'; panel.dataset.swtOwned = '';
   panel.setAttribute('aria-label', '海京翻译工具');
-  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.7'; title.title = '按住可拖动面板'; panel.append(title);
+  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.8'; title.title = '按住可拖动面板'; panel.append(title);
   const fold = doc.createElement('button'); fold.textContent = '−'; fold.className = 'swt-fold'; fold.title = '收起 / 展开'; panel.append(fold);
   const content = doc.createElement('div'); content.className = 'swt-body'; panel.append(content);
 
@@ -655,6 +655,8 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
         status.textContent = (failed ? `已显示 ${records.size} 处结果，${failures.size} 段未完成，可在原文下方重试。` : targets.length > batch.length ? `本轮完成 ${done} 处，点击继续翻译其余内容。` : `已完成，本页显示 ${records.size} 处结果。`) + (origins ? `来源：${origins}。` : '');
       }
     } catch (error) {
+      // Cancellation is not a service failure; a queued automatic source change must resume.
+      if (disposed || generation !== epoch) return;
       failed = true;
       if (generation === epoch && !disposed) {
         status.classList.add('swt-error'); status.textContent = userError(error);

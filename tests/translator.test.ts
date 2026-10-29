@@ -322,6 +322,33 @@ test('switching source during an in-flight response cannot render the previous s
   expect(w.document.querySelector('.swt-translation')).toBeNull(); stop();
 });
 
+test('automatic mode resumes the new source after cancelling the previous in-flight request', async () => {
+  const w = page(); w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ auto: true, provider: 'google' }));
+  let release!: (v: unknown) => void; const providers: string[] = [];
+  const stop = mountTranslator(w.document as any, good, async () => true, async (texts, provider) => {
+    providers.push(provider!);
+    if (providers.length === 1) return await new Promise(resolve => release = resolve);
+    return { ok: true, items: texts.map(() => ({ ok: true, text: '新来源译文', provider })) };
+  });
+  await waitFor(() => providers.length === 1);
+  const select = w.document.querySelector('select')!; select.value = 'dictionary'; select.dispatchEvent(new w.Event('change'));
+  release({ ok: true, items: [{ ok: true, text: '旧来源译文', provider: 'google' }] });
+  await tick(); await tick(); expect(providers).toEqual(['google', 'dictionary']);
+  expect(w.document.querySelector('.swt-translation')!.textContent).toBe('新来源译文'); stop();
+});
+
+test('automatic source change also resumes when an offline readiness check was pending', async () => {
+  const w = page(); w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ auto: true, provider: 'offline' }));
+  let release!: (v: unknown) => void; const providers: string[] = [];
+  const stop = mountTranslator(w.document as any, good, async () => true, async (texts, provider) => {
+    providers.push(provider!); return { ok: true, items: texts.map(() => ({ ok: true, text: '新来源译文', provider })) };
+  }, { importDictionary: async () => true, prepareOffline: () => new Promise(resolve => release = resolve) });
+  await waitFor(() => !!release);
+  const select = w.document.querySelector('select')!; select.value = 'dictionary'; select.dispatchEvent(new w.Event('change'));
+  release({ ok: true, state: 'ready' }); await tick(); await tick();
+  expect(providers).toEqual(['dictionary']); stop();
+});
+
 test('24 workshop titles use three batch RPCs and render all translations', async () => {
   const w = page(Array.from({ length: 24 }, (_, i) => `<div class="workshopItemTitle">Workshop title ${i}</div>`).join(''));
   let singleCalls = 0, batchCalls = 0;
