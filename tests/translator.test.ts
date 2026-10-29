@@ -21,6 +21,77 @@ const click = (w: Window, label: string) => {
 };
 const good = async (s: string) => JSON.stringify({ ok: true, text: `中文 ${s}` });
 
+test('failed paragraph can retry alone while later batches and successful parts survive', async () => {
+  const w = page(Array.from({ length: 4 }, (_, i) => `<div class="workshopItemTitle">Paragraph number ${i}</div>`).join(''));
+  w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ provider: 'offline' }));
+  const calls: string[][] = []; let fail = true;
+  const stop = mountTranslator(w.document as any, good, async () => true, async texts => {
+    calls.push(texts);
+    return { ok: true, items: texts.map(s => fail && s.endsWith('0') ? { ok: false, error: '这一段暂时失败' }
+      : { ok: true, text: `译文 ${s}`, provider: 'offline' }) };
+  });
+  click(w, '翻译本页'); await tick(); await tick();
+  expect(w.document.querySelectorAll('.swt-translation').length).toBe(3);
+  expect(w.document.querySelectorAll('.swt-failure').length).toBe(1);
+  fail = false; click(w, '重试此段'); await tick();
+  expect(calls.at(-1)).toEqual(['Paragraph number 0']);
+  expect(w.document.querySelectorAll('.swt-translation').length).toBe(4);
+  expect(w.document.querySelector('.swt-failure')).toBeNull(); stop();
+});
+
+test('two Steam documents serialize requests; restoring a queued page removes its request', async () => {
+  const a = page(' <div class="workshopItemTitle">First article</div>');
+  const b = page(' <div class="workshopItemTitle">Second article</div>');
+  let release!: (v: unknown) => void; let calls = 0;
+  const bridge = async (texts: string[]) => {
+    calls++;
+    if (calls === 1) return await new Promise(resolve => release = resolve);
+    return { ok: true, items: texts.map(() => ({ ok: true, text: '第二页译文' })) };
+  };
+  const stopA = mountTranslator(a.document as any, good, async () => true, bridge);
+  const stopB = mountTranslator(b.document as any, good, async () => true, bridge);
+  click(a, '翻译本页'); await tick(); click(b, '翻译本页'); await tick();
+  expect(calls).toBe(1); click(b, '还原');
+  release({ ok: true, items: [{ ok: true, text: '第一页译文' }] }); await tick();
+  expect(calls).toBe(1); expect(b.document.querySelector('.swt-translation')).toBeNull(); stopA(); stopB();
+});
+
+test('retrying a split paragraph reuses successful chunks instead of retranslating them', async () => {
+  const w = page(`<div class="workshopItemDescription">${'First sentence of this long description. '.repeat(35)}</div>`);
+  w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ provider: 'offline' }));
+  const calls: string[][] = []; let broken = true;
+  const text = originalText(w.document.querySelector('.workshopItemDescription') as any);
+  const chunks = splitText(text, 550), failedChunk = chunks.at(-1)!;
+  const stop = mountTranslator(w.document as any, good, async () => true, async texts => {
+    calls.push(texts); return { ok: true, items: texts.map(s => broken && s === failedChunk ? { ok: false, error: '分片失败' }
+      : { ok: true, text: '中文分片', provider: 'offline' }) };
+  });
+  click(w, '翻译本页'); await waitFor(() => !!w.document.querySelector('.swt-failure'));
+  await waitFor(() => !w.document.querySelector<HTMLButtonElement>('#swt-panel .swt-primary')!.disabled);
+  const previous = calls.length; broken = false; click(w, '重试此段');
+  await waitFor(() => !!w.document.querySelector('.swt-translation'));
+  expect(calls.slice(previous)).toEqual([[failedChunk]]); stop();
+});
+
+test('pending batches follow the new viewport after scrolling', async () => {
+  const w = page(Array.from({ length: 8 }, (_, i) => `<div class="workshopItemTitle">Article number ${i}</div>`).join(''));
+  w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ provider: 'offline' }));
+  let moved = false;
+  w.document.querySelectorAll('.workshopItemTitle').forEach((el, i) => {
+    el.getBoundingClientRect = () => { const y = (moved ? i >= 6 : i < 2) ? 20 : 10000 + i * 100;
+      return { x: 0, y, top: y, bottom: y + 20, width: 200, height: 20, left: 0, right: 200, toJSON() {} }; };
+  });
+  let release!: (v: unknown) => void; const calls: string[][] = [];
+  const result = (texts: string[]) => ({ ok: true, items: texts.map(() => ({ ok: true, text: '中文段落', provider: 'offline' })) });
+  const stop = mountTranslator(w.document as any, good, async () => true, async texts => {
+    calls.push(texts); if (calls.length === 1) return await new Promise(r => release = r); return result(texts);
+  });
+  click(w, '翻译本页'); await waitFor(() => calls.length === 1);
+  moved = true; release(result(calls[0])); await waitFor(() => calls.length === 4);
+  expect(calls[0]).toEqual(['Article number 0', 'Article number 1']);
+  expect(calls[1]).toEqual(['Article number 6', 'Article number 7']); stop();
+});
+
 test('offline translation starts an installed service and waits for readiness', async () => {
   const w = page(); w.localStorage.setItem('swt.preferences.v1', JSON.stringify({ provider: 'offline' }));
   let checks = 0, ready = false;
@@ -238,7 +309,8 @@ test('batch partial failures preserve successful results and label glossary matc
   click(w, '翻译本页'); await tick();
   expect(w.document.querySelectorAll('.swt-translation')).toHaveLength(1);
   expect(w.document.querySelector('.swt-translation')!.getAttribute('data-swt-label')).toContain('词库匹配');
-  expect(w.document.querySelector('[role=status]')!.textContent).toBe('本地词库未命中'); stop();
+  expect(w.document.querySelector('.swt-failure')!.textContent).toContain('本地词库未命中');
+  expect(w.document.querySelector('[role=status]')!.textContent).toContain('1 段未完成'); stop();
 });
 
 test('switching source during an in-flight response cannot render the previous source result', async () => {
@@ -289,7 +361,7 @@ test('invalid bridge payloads show readable errors without altering original tex
     click(w, '翻译本页'); await tick();
     expect(w.document.querySelector('.swt-translation')).toBeNull();
     expect(w.document.querySelector('[role=status]')!.textContent).toMatch(/翻译服务/);
-    expect(w.document.querySelector('.workshopItemTitle')!.textContent).toBe('Field Tents'); stop();
+    expect(originalText(w.document.querySelector('.workshopItemTitle') as any)).toBe('Field Tents'); stop();
   }
 });
 
@@ -360,7 +432,7 @@ test('errors preserve originals and allow retry', async () => {
   }, async () => true);
   click(w, '翻译本页'); await tick();
   expect(w.document.querySelector('[role=status]')!.textContent).toBe('网络不通');
-  expect(w.document.querySelector('.workshopItemTitle')!.textContent).toBe('Field Tents');
+  expect(originalText(w.document.querySelector('.workshopItemTitle') as any)).toBe('Field Tents');
   fail = false; click(w, '重试翻译'); await tick();
   expect(w.document.querySelectorAll('.swt-translation')).toHaveLength(1); stop();
 });

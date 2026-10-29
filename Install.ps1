@@ -34,7 +34,7 @@ try {
             Write-Host 'Millennium 3.6.2 已安装。' -ForegroundColor Green
         }
     }
-    if ($PSCmdlet.ShouldProcess($pluginTarget, '安装海京Tools 0.3.6')) {
+    if ($PSCmdlet.ShouldProcess($pluginTarget, '安装海京Tools 0.3.7')) {
         New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
         if (Test-Path -LiteralPath $pluginTarget) {
             Copy-Item -LiteralPath $pluginTarget -Destination ($pluginTarget + '.' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.bak')

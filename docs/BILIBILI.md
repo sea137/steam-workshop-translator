@@ -2,6 +2,18 @@
 
 以下是草稿，可直接修改后使用；未替你发布到哔哩哔哩。
 
+## 0.3.7 更新动态
+
+海京Tools 更新到 0.3.7 了！这次主要改善长公告的阅读体验：某一段翻译失败，后面的内容会继续；失败段落可以单独重试，已经翻好的内容会保留。还调整了请求排队和插入译文时的滚动位置，减少重复请求和阅读跳动。
+
+感谢 KISS Translator 和 FluentRead 带来的设计启发，按 Steam 环境独立实现了这次改进。下载请前往 GitHub Releases 的 Assets，新用户推荐 WithModel 完整包，内含模型和起步词库；先装 Millennium，再运行 Install.cmd，首次运行「安装离线翻译.cmd」配置运行环境。旧用户运行新版 Install.cmd 即可，已有模型不用重下。
+
+## 可置顶的问题反馈声明
+
+**遇到错误请先截图再反馈！** 请尽量截完整出错窗口，保留海京Tools版本、翻译源、完整错误文字，并说明：哪个页面、做了什么后出错、能否重复、是否用了 302 / 加速器。Steam 打不开也请说明是无窗口、闪退，还是无法登录/联网；有报错窗口就附截图。
+
+DNS 错误请提供实际出错页面的地址或域名，B站生成的错误文字搜索链接没法用来定位。截图遮住账号、邮箱、订单和密钥，不要发送密码、Cookie、验证码。评论不能附图时可私信截图，或到 GitHub Issues 反馈。只有“打不开”“用不了”，目前确实无法判断原因。完整模板在安装包 docs/BUG_REPORT.md。
+
 ## 推荐标题
 
 **Steam 创意工坊看不懂？我做了个中文翻译工具，客户端里直接用！**
@@ -76,7 +88,7 @@
 
 下载放这里：https://github.com/sea137/steam-workshop-translator/releases/latest
 
-请下载 **Assets 里的 HaijingTools-v0.3.6-Windows-WithModel.zip**，普通用户不用下载 Source code。解压后退出 Steam，运行 Install.cmd；重新打开 Steam，到 Millennium → Plugins 启用「海京Tools」。工坊右下角的功能面板叫「海京翻译工具」。
+请下载 **Assets 里的 HaijingTools-v0.3.7-Windows-WithModel.zip**，普通用户不用下载 Source code。解压后退出 Steam，运行 Install.cmd；重新打开 Steam，到 Millennium → Plugins 启用「海京Tools」。工坊右下角的功能面板叫「海京翻译工具」。
 
 连接失败先检查当前网络能否访问 Google。反馈请带上插件版本、公开工坊链接和错误截图，注意遮住账号信息。
 

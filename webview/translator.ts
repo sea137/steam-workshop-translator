@@ -1,3 +1,5 @@
+import { queueRequest } from './requestQueue';
+import { keepReadingPosition, readingDistance } from './readingPosition';
 // Millennium may decode a backend JSON string before passing it to WebKit.
 export type Translate = (text: string) => Promise<unknown>;
 export type TranslateBatch = (texts: string[], provider?: string) => Promise<unknown>;
@@ -259,6 +261,7 @@ const CSS = `
 #swt-panel strong{cursor:move;user-select:none;-webkit-user-select:none} #swt-panel.swt-folded{width:auto;padding:7px 10px}
 #swt-panel.swt-folded strong{font-size:13px} #swt-panel .swt-reset{background:#243b50;color:#cfe3f0;margin:6px 0 0}
 #swt-panel summary{cursor:pointer;color:#9fd9f4;margin-top:8px} #swt-panel .swt-source{display:block;margin:7px 0 0} #swt-panel [role=status]{white-space:pre-line}
+.swt-failure{display:block!important;color:#f2bb80!important;white-space:pre-wrap;line-height:1.6;margin-top:5px;padding:4px 6px;border-left:2px solid #b98b49;background:#14222d80}.swt-failure button{cursor:pointer;margin-left:6px}
 .swt-translation{display:block!important;white-space:pre-wrap;color:#9fd9f4!important;font-size:13px!important;font-weight:normal!important;line-height:1.6!important;overflow-wrap:anywhere;max-height:none!important;margin-top:5px;padding:4px 6px;border-left:2px solid #4994b9;background:#14222d80}
 .swt-translation:before{content:attr(data-swt-label);color:#76abc7;font-size:11px} .swt-error{color:#f2bb80!important}
 [data-swt-host]{height:auto!important;max-height:none!important;overflow:visible!important;white-space:normal!important}
@@ -276,7 +279,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   doc.head.append(style);
   const panel = doc.createElement('aside'); panel.id = 'swt-panel'; panel.dataset.swtOwned = '';
   panel.setAttribute('aria-label', '海京翻译工具');
-  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.6'; title.title = '按住可拖动面板'; panel.append(title);
+  const title = doc.createElement('strong'); title.textContent = '海京翻译工具 · 0.3.7'; title.title = '按住可拖动面板'; panel.append(title);
   const fold = doc.createElement('button'); fold.textContent = '−'; fold.className = 'swt-fold'; fold.title = '收起 / 展开'; panel.append(fold);
   const content = doc.createElement('div'); content.className = 'swt-body'; panel.append(content);
 
@@ -386,22 +389,30 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
     b.onclick = handler; content.append(b); return b;
   };
   let epoch = 0, busy = false, disposed = false, rerun = false;
+  let requestController = new AbortController();
+  const cancelRun = () => { epoch++; requestController.abort(); requestController = new AbortController(); };
   const records = new Map<Element, { source: string; node: HTMLElement; provider: string }>();
+  const failures = new Map<Element, HTMLElement>();
   const paragraphs = new Set<Element>();
   const removeTranslation = (el: Element, node: HTMLElement) => { node.remove(); el.removeAttribute('data-swt-host'); };
   const sessionCache = new Map<string, string>();
   const sessionOrigins = new Map<string, { providers: string[]; dictionary: boolean }>();
+  const partCache = new Map<string, { text: string; provider: string; kind: string }>();
+  const clearFailures = () => { failures.forEach((node, el) => removeTranslation(el, node)); failures.clear(); };
+  const preserveReading = (write: () => void) => keepReadingPosition(doc, collectTargets(doc, prefs.comments), write);
   const go = button('翻译本页', () => { void run(); }, true);
   const restore = button('还原', () => {
-    epoch++; prefs.auto = false; auto.checked = false; save();
-    records.forEach((r, el) => removeTranslation(el, r.node)); records.clear(); unwrapParagraphs(paragraphs); status.textContent = '已还原；自动翻译已关闭。';
+    cancelRun(); prefs.auto = false; auto.checked = false; save();
+    preserveReading(() => { clearFailures(); records.forEach((r, el) => removeTranslation(el, r.node)); records.clear(); });
+    unwrapParagraphs(paragraphs); status.textContent = '已还原；自动翻译已关闭。';
   });
   restore.title = '移除译文，停止当前翻译，并关闭自动翻译';
   button('清缓存', () => {
-    epoch++; prefs.auto = false; auto.checked = false; save();
-    sessionCache.clear(); sessionOrigins.clear(); records.forEach((r, el) => removeTranslation(el, r.node)); records.clear();
+    cancelRun(); prefs.auto = false; auto.checked = false; save();
+    sessionCache.clear(); sessionOrigins.clear(); partCache.clear();
+    preserveReading(() => { clearFailures(); records.forEach((r, el) => removeTranslation(el, r.node)); records.clear(); });
     status.textContent = '正在清除缓存…';
-    void clearCache().then(() => { status.textContent = '缓存已清空；自动翻译已关闭。'; })
+    void queueRequest(clearCache, requestController.signal).then(() => { status.textContent = '缓存已清空；自动翻译已关闭。'; })
       .catch(() => { status.textContent = '缓存清除失败，请稍后重试。'; });
   });
   const options = doc.createElement('div'); content.append(options);
@@ -411,14 +422,14 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
     label.append(input, doc.createTextNode(text)); options.append(label); return input;
   };
   const auto = checkbox('自动', !!prefs.auto, value => {
-    prefs.auto = value; save(); if (value) void run(); else { epoch++; status.textContent = '自动翻译已关闭。'; }
+    prefs.auto = value; save(); if (value) void run(); else { cancelRun(); status.textContent = '自动翻译已关闭。'; }
   });
   checkbox('包括评论', !!prefs.comments, value => {
     prefs.comments = value; save();
     if (!value) for (const [el, r] of records) {
       if (el.matches('.commentthread_comment_text')) { removeTranslation(el, r.node); records.delete(el); }
     }
-    epoch++; if (prefs.auto) void run();
+    cancelRun(); if (prefs.auto) void run();
   });
   const sourceLabel = doc.createElement('label'); sourceLabel.className = 'swt-source'; sourceLabel.textContent = '翻译源';
   const source = doc.createElement('select'); source.setAttribute('aria-label', '翻译源');
@@ -440,8 +451,13 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
       : '仅在本机匹配完整词条，不调用在线服务；未命中的整句不会被冒充为译文。';
   };
   updateNote();
+  const report = doc.createElement('details'), reportTitle = doc.createElement('summary');
+  reportTitle.textContent = '遇到错误？反馈前请截图'; report.append(reportTitle);
+  const reportText = doc.createElement('small');
+  reportText.textContent = '请提供完整出错窗口截图（含本工具版本、翻译源、完整报错），说明页面链接、操作步骤和是否使用 302 / 加速器。Steam 无法打开也请截实际错误窗口。请遮住账号、邮箱和密钥；不要提供密码、Cookie、验证码。';
+  report.append(reportText); content.append(report);
   source.onchange = () => {
-    epoch++; prefs.provider = source.value; save(); sessionCache.clear(); sessionOrigins.clear();
+    cancelRun(); prefs.provider = source.value; save(); sessionCache.clear(); sessionOrigins.clear(); partCache.clear(); clearFailures();
     records.forEach((r, el) => removeTranslation(el, r.node)); records.clear(); updateNote();
     status.classList.remove('swt-error'); status.textContent = `已切换到${SOURCES[prefs.provider]}，点击「翻译本页」应用。`;
     if (prefs.auto) { if (busy) rerun = true; else void run(); }
@@ -467,7 +483,7 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
         if (file.size > 2000000) throw new Error('词库不能超过 2 MB。');
         const response = responseObject(await tools.importDictionary(await file.text()));
         if (response.ok !== true) throw new Error(typeof response.error === 'string' ? response.error : '词库导入失败。');
-        epoch++; sessionCache.clear(); sessionOrigins.clear(); records.forEach((r, el) => removeTranslation(el, r.node)); records.clear();
+        cancelRun(); sessionCache.clear(); sessionOrigins.clear(); partCache.clear(); clearFailures(); records.forEach((r, el) => removeTranslation(el, r.node)); records.clear();
         status.classList.remove('swt-error'); status.textContent = `已导入 ${response.count} 个自定义词条，点击「翻译本页」应用。`;
       } catch (e) { status.classList.add('swt-error'); status.textContent = userError(e); }
       upload.value = '';
@@ -487,35 +503,56 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
   const panelResize = typeof win.ResizeObserver === 'function' ? new win.ResizeObserver(onReflow) : undefined;
   panelResize?.observe(panel);
   help.addEventListener('toggle', onReflow);
+  report.addEventListener('toggle', onReflow);
 
-  async function run() {
+  async function run(only?: Element, retryFailed = true) {
     if (disposed) return;
     if (busy) { rerun = true; return; }
-    busy = true; const generation = epoch; let done = 0; let failed = false;
+    busy = true; const generation = epoch, signal = requestController.signal; let done = 0; let failed = false;
     go.disabled = true; go.textContent = '翻译中…';
     try {
       for (const [el, r] of records) if (!el.isConnected) { removeTranslation(el, r.node); records.delete(el); }
+      for (const [el, node] of failures) if (!el.isConnected) { node.remove(); failures.delete(el); }
       prepareParagraphs(doc, paragraphs);
-      const targets = collectTargets(doc, prefs.comments).map(el => ({ el, source: originalText(el) })).filter(({ el, source }) => {
+      const readingCandidates = collectTargets(doc, prefs.comments);
+      const withPosition = (write: () => void) => keepReadingPosition(doc, readingCandidates, write);
+      const targets = readingCandidates.map(el => ({ el, source: originalText(el) })).filter(({ el, source }) => {
+        if (only && el !== only || !retryFailed && failures.has(el)) return false;
         const previous = records.get(el);
         if (previous && (previous.source !== source || !previous.node.isConnected)) { removeTranslation(el, previous.node); records.delete(el); }
         return !records.has(el) && /[a-zA-Z\u3040-\u30ff\uac00-\ud7af\u0400-\u04ff]{2}/.test(source) &&
           !el.closest('[hidden],[aria-hidden="true"]');
       });
       // Nearby visible content is rendered first; the rest follows in DOM order.
-      const distance = (el: Element) => {
-        const rect = el.getBoundingClientRect();
-        return rect.bottom < 0 ? -rect.bottom : rect.top > win.innerHeight ? rect.top - win.innerHeight : 0;
-      };
+      const distance = readingDistance;
       const distances = new Map(targets.map(t => [t.el, distance(t.el)]));
       targets.sort((a, b) => distances.get(a.el)! - distances.get(b.el)!);
       const batch = targets.slice(0, 160);
+      if (failures.size) withPosition(() => { for (const t of batch) { failures.get(t.el)?.remove(); failures.delete(t.el); } });
       const prepared = batch.map(t => ({ ...t, parts: splitText(t.source, prefs.provider === 'mymemory' ? 140 : 550), rendered: false }));
-      const partResults = new Map<string, string>();
-      const partSources = new Map<string, { provider: string; kind: string }>();
+      const partResults = new Map([...partCache].map(([key, value]) => [key, value.text]));
+      const partSources = new Map([...partCache].map(([key, value]) => [key, { provider: value.provider, kind: value.kind }]));
+      const partErrors = new Map<string, string>();
       const pending = new Set<string>();
-      for (const t of prepared) if (!sessionCache.has(t.source)) for (const p of t.parts) pending.add(p);
+      for (const t of prepared) if (!sessionCache.has(t.source)) for (const p of t.parts) if (!partResults.has(p)) pending.add(p);
+      const renderFailures = () => {
+        if (!prepared.some(t => !t.rendered && !failures.has(t.el) && t.parts.some(p => partErrors.has(p)))) return;
+        withPosition(() => {
+        for (const t of prepared) {
+          const error = t.parts.map(p => partErrors.get(p)).find(Boolean);
+          if (!error || t.rendered || failures.has(t.el) || !t.el.isConnected || originalText(t.el) !== t.source) continue;
+          const node = doc.createElement('span'); node.dataset.swtOwned = ''; node.className = 'swt-failure swt-error';
+          // Failure cards are separate from translated results and never cached as translations.
+          node.textContent = `本段未完成：${error} `;
+          const retry = doc.createElement('button'); retry.textContent = '重试此段';
+          retry.onclick = () => { if (!busy) void run(t.el); else status.textContent = '正在翻译其他段落，请完成后重试此段。'; };
+          node.append(retry); t.el.setAttribute('data-swt-host', ''); t.el.append(node); failures.set(t.el, node);
+        }
+        });
+      };
       const renderReady = () => {
+        if (!prepared.some(t => !t.rendered && (sessionCache.has(t.source) || t.parts.every(p => partResults.has(p))))) return;
+        withPosition(() => {
         for (const t of prepared) {
           if (t.rendered || generation !== epoch || disposed) continue;
           const translated = sessionCache.get(t.source) ?? (t.parts.every(p => partResults.has(p))
@@ -535,14 +572,16 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
         node.dataset.swtProvider = providers.join(','); node.textContent = translated; // Never render service output as HTML.
         el.setAttribute('data-swt-host', ''); el.append(node); records.set(el, { source, node, provider: origin }); done++;
         }
+        });
       };
       renderReady();
       const jobs = [...pending];
+      const queuedOrder = new Map(jobs.map((part, i) => [part, i]));
       if (jobs.length && tools?.prepareOffline && (prefs.provider === 'offline' || prefs.provider === 'auto')) {
         for (let attempt = 0; attempt < 30; attempt++) {
           if (disposed || generation !== epoch) return;
           status.classList.remove('swt-error'); status.textContent = '正在检查并启动本地翻译服务，保留已安装的模型…';
-          const state = responseObject(await tools.prepareOffline());
+          const state = responseObject(await queueRequest(() => tools.prepareOffline!(), signal));
           if (disposed || generation !== epoch) return;
           if (state.state === 'ready') break;
           if (state.state === 'missing') {
@@ -556,8 +595,21 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
+      let dispatched = 0;
       for (let index = 0; index < jobs.length;) {
         if (disposed || generation !== epoch) break;
+        // Re-evaluate the remaining text after scrolling, but reserve every fourth
+        // dispatch for the oldest queued part so background paragraphs still progress.
+        {
+          const oldestFirst = ++dispatched % 4 === 0;
+          const priority = new Map<string, number>();
+          for (const t of prepared) {
+            const score = distance(t.el);
+            for (const part of t.parts) priority.set(part, Math.min(priority.get(part) ?? Infinity, score));
+          }
+          const rest = jobs.slice(index).sort((a, b) => (oldestFirst ? 0 : (priority.get(a) ?? Infinity) - (priority.get(b) ?? Infinity)) || queuedOrder.get(a)! - queuedOrder.get(b)!);
+          jobs.splice(index, rest.length, ...rest);
+        }
         const group: string[] = []; let encoded = 0;
         const groupLimit = !translateBatch || prefs.provider === 'mymemory' ? 1 : prefs.provider === 'offline' ? 2 : 8;
         while (index < jobs.length && group.length < groupLimit) {
@@ -566,32 +618,41 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
           group.push(jobs[index++]); encoded += cost;
         }
         status.classList.remove('swt-error'); status.textContent = `正在翻译 ${done} / ${batch.length}（每批最多 8 段）…`;
+        try {
         if (translateBatch) {
-          const response = responseObject(await translateBatch(group, prefs.provider));
+          const response = responseObject(await queueRequest(() => translateBatch(group, prefs.provider), signal));
           if (response.ok !== true) translationText(response);
           if (!Array.isArray(response.items) || response.items.length !== group.length)
             throw new Error('批量翻译返回数量异常，请重试。');
-          let firstError: unknown;
           for (let i = 0; i < group.length; i++) {
             try {
               const item = responseObject(response.items[i]);
               partResults.set(group[i], translationText(item));
               partSources.set(group[i], { provider: typeof item.provider === 'string' ? item.provider : prefs.provider,
                 kind: typeof item.kind === 'string' ? item.kind : 'translation' });
-            } catch (e) { firstError ??= e; }
+            } catch (e) { partErrors.set(group[i], userError(e)); }
           }
           if (disposed || generation !== epoch) break;
           renderReady();
-          if (firstError) throw firstError;
-        } else partResults.set(group[0], translationText(await translate(group[0])));
+        } else partResults.set(group[0], translationText(await queueRequest(() => translate(group[0]), signal)));
+        } catch (error) {
+          if (disposed || generation !== epoch) return;
+          for (const part of group) if (!partResults.has(part)) partErrors.set(part, userError(error));
+          renderFailures(); throw error; // A transport/service outage should not hammer the remaining article.
+        }
         if (disposed || generation !== epoch) break;
+        for (const part of group) if (partResults.has(part)) partCache.set(part, { text: partResults.get(part)!,
+          provider: partSources.get(part)?.provider || prefs.provider, kind: partSources.get(part)?.kind || 'translation' });
         renderReady();
+        renderFailures();
         // Let Steam handle paint and input between cached batches as well.
         await new Promise(resolve => setTimeout(resolve, 0));
       }
       if (generation === epoch && !disposed) {
+        failed = failures.size > 0;
         const origins = [...new Set([...records.values()].map(r => r.provider))].join('、');
-        status.textContent = (targets.length > batch.length ? `本轮完成 ${done} 处，点击继续翻译其余内容。` : `已完成，本页显示 ${records.size} 处结果。`) + (origins ? `来源：${origins}。` : '');
+        status.classList.toggle('swt-error', failed);
+        status.textContent = (failed ? `已显示 ${records.size} 处结果，${failures.size} 段未完成，可在原文下方重试。` : targets.length > batch.length ? `本轮完成 ${done} 处，点击继续翻译其余内容。` : `已完成，本页显示 ${records.size} 处结果。`) + (origins ? `来源：${origins}。` : '');
       }
     } catch (error) {
       failed = true;
@@ -610,12 +671,12 @@ export function mountTranslator(doc: Document, translate: Translate, clearCache:
     // Ignore our own inserted spans; react to text and newly loaded Steam content.
     if (changes.every(c => c.type === 'childList' && [...c.addedNodes, ...c.removedNodes].every(n =>
       n.nodeType === 1 && (n as Element).matches(OWN)))) return;
-    clearTimeout(timer); timer = setTimeout(() => { if (prefs.auto) void run(); }, 700);
+    clearTimeout(timer); timer = setTimeout(() => { if (prefs.auto) void run(undefined, false); }, 700);
   });
   observer.observe(doc.body, { subtree: true, childList: true, characterData: true });
   if (prefs.auto) void run();
   return () => {
-    disposed = true; epoch++; clearTimeout(timer); clearTimeout(reflow); observer.disconnect(); panelResize?.disconnect();
+    disposed = true; cancelRun(); clearFailures(); clearTimeout(timer); clearTimeout(reflow); observer.disconnect(); panelResize?.disconnect();
     win.removeEventListener('resize', onReflow); win.removeEventListener('scroll', onReflow, true);
     win.removeEventListener('mousemove', onMove); win.removeEventListener('mouseup', onUp);
     records.forEach((r, el) => removeTranslation(el, r.node)); records.clear(); unwrapParagraphs(paragraphs); panel.remove(); style.remove();
